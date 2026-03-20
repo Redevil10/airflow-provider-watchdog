@@ -462,8 +462,7 @@ class TestStuckTaskDetector:
 
         now = self._now()
         hist_rows = [
-            SimpleNamespace(dag_id="dag1", task_id="task1", duration=0.0)
-            for _ in range(5)
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=0.0) for _ in range(5)
         ]
         run_rows = [
             SimpleNamespace(
