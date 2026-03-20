@@ -12,5 +12,5 @@ build/
 venv/
 *.so
 .DS_Store
-./.claude
-
+.claude/
+.idea/
