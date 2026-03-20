@@ -78,12 +78,12 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  airflow_watchdog_monitor DAG  (runs every 30 min)      │
+│  airflow_watchdog_monitor DAG                   │
 │                                                 │
-│  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌─────┐ │
-│  │ Runtime │ │ Failures │ │Deadlines │ │Stuck│ │
-│  │Detector │ │ Detector │ │ Detector │ │Det. │ │
-│  └────┬────┘ └────┬─────┘ └────┬─────┘ └──┬──┘ │
+│  ┌─────────┐ ┌──────────┐ ┌──────────┐  ┌─────┐ │
+│  │ Runtime │ │ Failures │ │Deadlines │  │Stuck│ │
+│  │Detector │ │ Detector │ │ Detector │  │Det. │ │
+│  └────┬────┘ └────┬─────┘ └────┬─────┘  └──┬──┘ │
 │       │           │            │           │    │
 │       └───────────┴────────────┴───────────┘    │
 │                       │                         │
@@ -100,7 +100,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
                ┌────────▼────────┐
                │   /watchdog/    │
                │   Dashboard     │
-               │  (Flask BP)     │
+               │   (FastAPI)     │
                └─────────────────┘
 ```
 
