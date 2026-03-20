@@ -25,46 +25,51 @@ watchdog_app = FastAPI()
 
 def _get_dashboard_data() -> dict:
     """Gather data for the dashboard from the metadata DB."""
+    from datetime import datetime, timezone
+
     from airflow.settings import Session
 
     session = Session()
-    data = {
+    data: dict = {
         "dags": [],
         "alerts": [],
         "summary": {"total_dags": 0, "healthy": 0, "warning": 0, "critical": 0},
     }
 
     try:
-        # ── Get all active DAGs with recent run info ─────────────────────
         from sqlalchemy import text
 
+        # ── Get all active DAGs ────────────────────────────────────────
         dag_query = text(
             """\
-            SELECT
-                d.dag_id,
-                d.is_paused,
-                dr.state AS last_run_state,
-                dr.start_date AS last_run_start,
-                dr.end_date AS last_run_end,
-                EXTRACT(EPOCH FROM (
-                    COALESCE(dr.end_date, NOW()) - dr.start_date
-                )) AS last_run_duration_secs
-            FROM dag d
-            LEFT JOIN LATERAL (
-                SELECT state, start_date, end_date
-                FROM dag_run
-                WHERE dag_run.dag_id = d.dag_id
-                ORDER BY start_date DESC
-                LIMIT 1
-            ) dr ON TRUE
-            WHERE d.dag_id != 'airflow_watchdog_monitor'
-            ORDER BY d.dag_id
+            SELECT dag_id, is_paused
+            FROM dag
+            WHERE dag_id != 'airflow_watchdog_monitor'
+            ORDER BY dag_id
         """
         )
-
         dag_rows = session.execute(dag_query).fetchall()
 
-        # ── Get latest watchdog alerts from XCom ─────────────────────────
+        # ── Get latest run per DAG ─────────────────────────────────────
+        runs_query = text(
+            """\
+            SELECT dag_id, state, start_date, end_date,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY dag_id ORDER BY start_date DESC
+                   ) AS rn
+            FROM dag_run
+            WHERE dag_id != 'airflow_watchdog_monitor'
+        """
+        )
+        run_rows = session.execute(runs_query).fetchall()
+
+        # Build lookup: dag_id -> latest run (rn=1)
+        latest_runs: dict = {}
+        for row in run_rows:
+            if row.rn == 1:
+                latest_runs[row.dag_id] = row
+
+        # ── Get latest watchdog alerts from XCom ───────────────────────
         alerts_query = text(
             """\
             SELECT value
@@ -78,20 +83,22 @@ def _get_dashboard_data() -> dict:
         )
 
         alert_row = session.execute(alerts_query).fetchone()
-        alert_data = {}
+        alert_data: dict = {}
         if alert_row:
             try:
                 alert_data = json.loads(alert_row.value)
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # ── Build alert lookup by dag_id ─────────────────────────────────
+        # ── Build alert lookup by dag_id ───────────────────────────────
         alerts_by_dag: dict[str, list[dict]] = {}
         for alert in alert_data.get("alerts", []):
             dag_id = alert.get("dag_id", "")
             alerts_by_dag.setdefault(dag_id, []).append(alert)
 
-        # ── Assemble DAG list ────────────────────────────────────────────
+        # ── Assemble DAG list ──────────────────────────────────────────
+        now = datetime.now(timezone.utc)
+
         for row in dag_rows:
             dag_alerts = alerts_by_dag.get(row.dag_id, [])
             has_critical = any(a["severity"] == "critical" for a in dag_alerts)
@@ -109,16 +116,23 @@ def _get_dashboard_data() -> dict:
 
             data["summary"]["total_dags"] += 1
 
+            # Compute duration in Python (DB-agnostic)
+            lr = latest_runs.get(row.dag_id)
+            last_run_state = lr.state if lr else None
+            last_run_start = lr.start_date if lr else None
+            duration_secs = None
+            if lr and lr.start_date:
+                end = lr.end_date if lr.end_date else now
+                duration_secs = (end - lr.start_date).total_seconds()
+
             data["dags"].append(
                 {
                     "dag_id": row.dag_id,
                     "is_paused": row.is_paused,
                     "status": status,
-                    "last_run_state": row.last_run_state,
-                    "last_run_start": row.last_run_start.isoformat()
-                    if row.last_run_start
-                    else None,
-                    "last_run_duration_secs": row.last_run_duration_secs,
+                    "last_run_state": last_run_state,
+                    "last_run_start": last_run_start.isoformat() if last_run_start else None,
+                    "last_run_duration_secs": duration_secs,
                     "alerts": dag_alerts,
                 }
             )
