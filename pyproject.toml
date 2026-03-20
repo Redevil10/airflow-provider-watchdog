@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "airflow-provider-watchdog"
+version = "0.1.0"
+description = "A lightweight, zero-dependency Airflow provider that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, and stuck tasks."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Qing Wan" },
+]
+keywords = [
+    "airflow",
+    "monitoring",
+    "anomaly-detection",
+    "dag-health",
+    "provider",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Apache Airflow",
+    "Framework :: Apache Airflow :: Provider",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "apache-airflow>=3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+    "prek",
+    "tox>=4.0",
+]
+
+[project.urls]
+Repository = "https://github.com/Redevil10/airflow-provider-watchdog"
+
+[project.entry-points."apache_airflow_provider"]
+provider_info = "airflow_watchdog:get_provider_info"
+
+[tool.hatch.build.targets.wheel]
+packages = ["airflow_watchdog"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.tox]
+env_list = ["airflow3"]
+
+[tool.tox.env.airflow3]
+description = "Test against Apache Airflow 3.x"
+skip_install = true
+set_env = "PYTHONPATH = {toxinidir}"
+deps = [
+    "apache-airflow>=3.0",
+    "pytest>=8.0",
+    "pytest-cov",
+]
+commands = [["pytest", "--cov=airflow_watchdog", "--cov-report=xml", "{posargs:tests/}"]]
+
+[tool.tox.env.verify-airflow3]
+description = "Verify the published PyPI package works with Airflow 3.x"
+skip_install = true
+deps = [
+    "airflow-provider-watchdog",
+    "apache-airflow>=3.0",
+    "pytest>=8.0",
+]
+commands = [["pytest", "{posargs:tests/}"]]
