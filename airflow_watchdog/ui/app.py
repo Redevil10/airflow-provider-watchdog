@@ -145,6 +145,7 @@ def _get_dashboard_data() -> dict:
 
     except Exception:
         logger.exception("Error loading watchdog dashboard data")
+        data["error"] = "Failed to load dashboard data. Check the Airflow webserver logs."
     finally:
         session.close()
 
