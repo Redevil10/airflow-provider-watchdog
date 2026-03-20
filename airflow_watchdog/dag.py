@@ -87,7 +87,7 @@ def _run_watchdog(**context) -> str:
 # (or a Variable-aware approach).  Default: every 30 minutes.
 
 with DAG(
-    dag_id="watchdog_monitor",
+    dag_id="airflow_watchdog_monitor",
     description=(
         "Monitors DAG/task health"
         " — runtime anomalies, failure spikes, missed deadlines, stuck tasks."

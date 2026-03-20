@@ -18,7 +18,7 @@ def test_defaults():
     assert config.lookback_runs == 20
     assert config.runtime_iqr_multiplier == 1.5
     assert config.failure_spike_ratio == 2.0
-    assert "watchdog_monitor" in config.exclude_dags
+    assert "airflow_watchdog_monitor" in config.exclude_dags
 
 
 def test_overrides():
@@ -49,7 +49,7 @@ def test_watchdog_dag_always_excluded():
     with patch.dict("sys.modules", {"airflow.models": mock_models, "airflow": MagicMock()}):
         config = load_config()
 
-    assert "watchdog_monitor" in config.exclude_dags
+    assert "airflow_watchdog_monitor" in config.exclude_dags
     assert "my_dag" in config.exclude_dags
 
 

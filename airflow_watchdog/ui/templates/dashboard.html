@@ -5,20 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Watchdog Dashboard</title>
     <style>
+        /* Light theme (default — matches Airflow's default) */
         :root {
-            --bg: #0f1117;
-            --surface: #1a1d27;
-            --surface-hover: #22263a;
-            --border: #2a2e3d;
-            --text: #e1e4ed;
-            --text-muted: #8b8fa3;
-            --green: #22c55e;
-            --green-bg: rgba(34, 197, 94, 0.12);
-            --yellow: #eab308;
-            --yellow-bg: rgba(234, 179, 8, 0.12);
-            --red: #ef4444;
-            --red-bg: rgba(239, 68, 68, 0.12);
-            --blue: #3b82f6;
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --surface-hover: #f1f3f5;
+            --border: #dee2e6;
+            --text: #212529;
+            --text-muted: #6c757d;
+            --green: #198754;
+            --green-bg: rgba(25, 135, 84, 0.10);
+            --yellow: #cc9a06;
+            --yellow-bg: rgba(204, 154, 6, 0.10);
+            --red: #dc3545;
+            --red-bg: rgba(220, 53, 69, 0.10);
+            --blue: #0d6efd;
+        }
+
+        /* Dark theme — follows OS/browser preference */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f1117;
+                --surface: #1a1d27;
+                --surface-hover: #22263a;
+                --border: #2a2e3d;
+                --text: #e1e4ed;
+                --text-muted: #8b8fa3;
+                --green: #22c55e;
+                --green-bg: rgba(34, 197, 94, 0.12);
+                --yellow: #eab308;
+                --yellow-bg: rgba(234, 179, 8, 0.12);
+                --red: #ef4444;
+                --red-bg: rgba(239, 68, 68, 0.12);
+                --blue: #3b82f6;
+            }
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
