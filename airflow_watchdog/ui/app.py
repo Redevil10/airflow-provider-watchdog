@@ -148,10 +148,7 @@ async def dashboard() -> HTMLResponse:
 
     # OWASP: escape HTML-significant chars using unicode escapes (valid in JS)
     safe_json = (
-        json.dumps(data)
-        .replace("&", "\\u0026")
-        .replace("<", "\\u003c")
-        .replace(">", "\\u003e")
+        json.dumps(data).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
     )
     html = html_template.replace("{{ DATA_JSON }}", safe_json)
 

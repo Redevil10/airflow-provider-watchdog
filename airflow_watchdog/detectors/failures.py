@@ -100,18 +100,14 @@ def detect(session: Session, config: WatchdogConfig) -> list[Alert]:
         baseline_rate = row.baseline_failures / row.baseline_total if row.baseline_total else 0.0
 
         # Check spike condition
-        is_spike = (
-            baseline_rate > 0 and recent_rate > config.failure_spike_ratio * baseline_rate
-        )
+        is_spike = baseline_rate > 0 and recent_rate > config.failure_spike_ratio * baseline_rate
         is_new_failures = baseline_rate == 0 and row.recent_failures > 0
 
         if not is_spike and not is_new_failures:
             continue
 
         severity = (
-            Severity.CRITICAL
-            if baseline_rate == 0 or recent_rate > 0.5
-            else Severity.WARNING
+            Severity.CRITICAL if baseline_rate == 0 or recent_rate > 0.5 else Severity.WARNING
         )
 
         alert = Alert(
