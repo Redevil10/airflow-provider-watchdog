@@ -96,7 +96,7 @@ with DAG(
     start_date=None,  # Airflow 3: no fixed start_date needed for timedelta schedules
     catchup=False,
     max_active_runs=1,
-    tags=["watchdog", "monitoring"],
+    tags={"watchdog", "monitoring"},
     default_args={
         "retries": 1,
         "retry_delay": timedelta(minutes=2),

@@ -114,7 +114,7 @@ def _send_slack(alerts: list[Alert], config: WatchdogConfig) -> None:
 
     try:
         req = Request(
-            config.alert_slack_webhook,
+            config.alert_slack_webhook,  # type: ignore[arg-type]
             data=payload,
             headers={"Content-Type": "application/json"},
         )
