@@ -343,9 +343,24 @@
             `;
         }
 
+        function renderError(msg) {
+            const el = document.getElementById("dag-table");
+            el.innerHTML = `
+                <div class="empty-state" style="color: var(--red)">
+                    <div class="icon">&#9888;</div>
+                    <p>${escapeHtml(msg)}</p>
+                </div>
+            `;
+        }
+
         // Initial render
+        if (DATA.error) {
+            renderError(DATA.error);
+        }
         renderSummary(DATA.summary);
-        renderTable(DATA.dags);
+        if (!DATA.error) {
+            renderTable(DATA.dags);
+        }
 
         // Auto-refresh every 60s via JSON API
         setInterval(async () => {

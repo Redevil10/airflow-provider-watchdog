@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import cast
 from urllib.request import Request, urlopen
 
 from airflow_watchdog.config import WatchdogConfig
@@ -114,7 +115,7 @@ def _send_slack(alerts: list[Alert], config: WatchdogConfig) -> None:
 
     try:
         req = Request(
-            config.alert_slack_webhook,  # type: ignore[arg-type]
+            cast(str, config.alert_slack_webhook),
             data=payload,
             headers={"Content-Type": "application/json"},
         )
