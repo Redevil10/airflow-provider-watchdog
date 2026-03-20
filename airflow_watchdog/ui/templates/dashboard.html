@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watchdog Dashboard</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --surface: #1a1d27;
+            --surface-hover: #22263a;
+            --border: #2a2e3d;
+            --text: #e1e4ed;
+            --text-muted: #8b8fa3;
+            --green: #22c55e;
+            --green-bg: rgba(34, 197, 94, 0.12);
+            --yellow: #eab308;
+            --yellow-bg: rgba(234, 179, 8, 0.12);
+            --red: #ef4444;
+            --red-bg: rgba(239, 68, 68, 0.12);
+            --blue: #3b82f6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header h1 span { font-size: 1.6rem; }
+
+        .refresh-info {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Summary cards */
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .card-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .card-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .card-value.green { color: var(--green); }
+        .card-value.yellow { color: var(--yellow); }
+        .card-value.red { color: var(--red); }
+        .card-value.blue { color: var(--blue); }
+
+        /* DAG table */
+        .table-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .section-title {
+            padding: 16px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 20px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        tr:hover { background: var(--surface-hover); }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-healthy { background: var(--green-bg); color: var(--green); }
+        .status-warning { background: var(--yellow-bg); color: var(--yellow); }
+        .status-critical { background: var(--red-bg); color: var(--red); }
+
+        .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+        }
+
+        .dot-green { background: var(--green); }
+        .dot-yellow { background: var(--yellow); }
+        .dot-red { background: var(--red); }
+
+        .dag-link {
+            color: var(--blue);
+            text-decoration: none;
+        }
+
+        .dag-link:hover { text-decoration: underline; }
+
+        .alert-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .alert-list li {
+            font-size: 0.82rem;
+            padding: 3px 0;
+            color: var(--text-muted);
+        }
+
+        .alert-list li::before {
+            margin-right: 6px;
+        }
+
+        .alert-list li.critical::before { content: "🔴"; }
+        .alert-list li.warning::before { content: "🟡"; }
+
+        .duration {
+            font-variant-numeric: tabular-nums;
+            color: var(--text-muted);
+        }
+
+        .run-state {
+            font-size: 0.8rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .run-success { background: var(--green-bg); color: var(--green); }
+        .run-failed { background: var(--red-bg); color: var(--red); }
+        .run-running { background: rgba(59, 130, 246, 0.12); color: var(--blue); }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+
+        @media (max-width: 768px) {
+            .summary { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span>🐕</span> Watchdog Dashboard</h1>
+        <div class="refresh-info">Auto-refreshes every 60s</div>
+    </div>
+
+    <div class="summary" id="summary"></div>
+    <div class="table-container">
+        <div class="section-title">DAG Health Overview</div>
+        <div id="dag-table"></div>
+    </div>
+
+    <script>
+        const DATA = {{ DATA_JSON }};
+
+        function escapeHtml(str) {
+            const div = document.createElement("div");
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        function formatDuration(secs) {
+            if (secs == null) return "—";
+            if (secs < 60) return Math.round(secs) + "s";
+            if (secs < 3600) return (secs / 60).toFixed(1) + "m";
+            return (secs / 3600).toFixed(1) + "h";
+        }
+
+        function renderSummary(s) {
+            const el = document.getElementById("summary");
+            el.innerHTML = `
+                <div class="card">
+                    <div class="card-label">Total DAGs</div>
+                    <div class="card-value blue">${s.total_dags}</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Healthy</div>
+                    <div class="card-value green">${s.healthy}</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Warning</div>
+                    <div class="card-value yellow">${s.warning}</div>
+                </div>
+                <div class="card">
+                    <div class="card-label">Critical</div>
+                    <div class="card-value red">${s.critical}</div>
+                </div>
+            `;
+        }
+
+        function renderTable(dags) {
+            const el = document.getElementById("dag-table");
+
+            if (!dags.length) {
+                el.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">🐕</div>
+                        <p>No DAGs found. The watchdog DAG needs to run at least once.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const statusDot = (s) => {
+                const cls = s === "critical" ? "red" : s === "warning" ? "yellow" : "green";
+                return `<span class="dot dot-${cls}"></span>`;
+            };
+
+            const rows = dags.map(d => {
+                const runStateClass = d.last_run_state === "success" ? "run-success"
+                    : d.last_run_state === "failed" ? "run-failed"
+                    : d.last_run_state === "running" ? "run-running" : "";
+
+                const alertItems = (d.alerts || []).map(a =>
+                    `<li class="${escapeHtml(a.severity)}">${escapeHtml(a.message)}</li>`
+                ).join("");
+
+                const alertsHtml = alertItems
+                    ? `<ul class="alert-list">${alertItems}</ul>`
+                    : '<span style="color: var(--text-muted)">—</span>';
+
+                return `
+                    <tr>
+                        <td>
+                            <span class="status-badge status-${d.status}">
+                                ${statusDot(d.status)} ${d.status}
+                            </span>
+                        </td>
+                        <td>
+                            <a class="dag-link" href="/dags/${encodeURIComponent(d.dag_id)}">${escapeHtml(d.dag_id)}</a>
+                            ${d.is_paused ? ' <span style="color: var(--text-muted)">(paused)</span>' : ''}
+                        </td>
+                        <td>
+                            ${d.last_run_state
+                                ? `<span class="run-state ${runStateClass}">${d.last_run_state}</span>`
+                                : '<span style="color: var(--text-muted)">—</span>'
+                            }
+                        </td>
+                        <td class="duration">${formatDuration(d.last_run_duration_secs)}</td>
+                        <td>${alertsHtml}</td>
+                    </tr>
+                `;
+            }).join("");
+
+            el.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 120px">Status</th>
+                            <th>DAG</th>
+                            <th style="width: 100px">Last Run</th>
+                            <th style="width: 100px">Duration</th>
+                            <th>Alerts</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        // Initial render
+        renderSummary(DATA.summary);
+        renderTable(DATA.dags);
+
+        // Auto-refresh every 60s via JSON API
+        setInterval(async () => {
+            try {
+                const resp = await fetch("/watchdog/api/data");
+                const fresh = await resp.json();
+                renderSummary(fresh.summary);
+                renderTable(fresh.dags);
+            } catch (e) {
+                console.warn("Watchdog refresh failed:", e);
+            }
+        }, 60000);
+    </script>
+</body>
+</html>
