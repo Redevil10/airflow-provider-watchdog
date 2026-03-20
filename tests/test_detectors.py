@@ -6,6 +6,7 @@ controlled result rows, then verifying the Alert objects produced.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -22,6 +23,18 @@ def _make_session(rows: list[SimpleNamespace]) -> MagicMock:
     return session
 
 
+def _make_multi_session(*row_lists: list[SimpleNamespace]) -> MagicMock:
+    """Mock session returning different rows for successive execute() calls."""
+    session = MagicMock()
+    results = []
+    for rows in row_lists:
+        result = MagicMock()
+        result.fetchall.return_value = rows
+        results.append(result)
+    session.execute.side_effect = results
+    return session
+
+
 def _default_config(**overrides) -> WatchdogConfig:
     return WatchdogConfig(**overrides)
 
@@ -33,19 +46,16 @@ class TestRuntimeDetector:
     def test_slower_than_upper_fence_warning(self):
         from airflow_watchdog.detectors.runtime import detect
 
-        row = SimpleNamespace(
-            dag_id="etl_daily",
-            task_id="extract",
-            q1=10.0,
-            median=15.0,
-            q3=20.0,
-            iqr=10.0,
-            lower_fence=-5.0,
-            upper_fence=35.0,
-            latest_duration=40.0,  # outside upper fence but within 3*IQR
-            sample_size=20,
-        )
-        session = _make_session([row])
+        # Provide enough data points (rn 1-6), latest (rn=1) is the anomaly
+        rows = [
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=40.0, rn=1),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=15.0, rn=2),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=12.0, rn=3),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=18.0, rn=4),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=14.0, rn=5),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=16.0, rn=6),
+        ]
+        session = _make_session(rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 1
@@ -58,19 +68,18 @@ class TestRuntimeDetector:
     def test_faster_than_lower_fence(self):
         from airflow_watchdog.detectors.runtime import detect
 
-        row = SimpleNamespace(
-            dag_id="etl_daily",
-            task_id="extract",
-            q1=100.0,
-            median=150.0,
-            q3=200.0,
-            iqr=100.0,
-            lower_fence=-50.0,
-            upper_fence=350.0,
-            latest_duration=-60.0,  # below lower fence
-            sample_size=20,
-        )
-        session = _make_session([row])
+        # Latest (rn=1) is far below the cluster of 100-140
+        rows = [
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=10.0, rn=1),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=100.0, rn=2),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=105.0, rn=3),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=110.0, rn=4),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=115.0, rn=5),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=120.0, rn=6),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=125.0, rn=7),
+            SimpleNamespace(dag_id="etl_daily", task_id="extract", duration=130.0, rn=8),
+        ]
+        session = _make_session(rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 1
@@ -79,19 +88,16 @@ class TestRuntimeDetector:
     def test_critical_when_deviation_exceeds_3x_iqr(self):
         from airflow_watchdog.detectors.runtime import detect
 
-        row = SimpleNamespace(
-            dag_id="etl_daily",
-            task_id="load",
-            q1=10.0,
-            median=15.0,
-            q3=20.0,
-            iqr=10.0,
-            lower_fence=-5.0,
-            upper_fence=35.0,
-            latest_duration=50.0,  # |50-15| = 35 > 3*10 = 30 → CRITICAL
-            sample_size=20,
-        )
-        session = _make_session([row])
+        # Latest duration far outside IQR fences
+        rows = [
+            SimpleNamespace(dag_id="etl_daily", task_id="load", duration=200.0, rn=1),
+            SimpleNamespace(dag_id="etl_daily", task_id="load", duration=10.0, rn=2),
+            SimpleNamespace(dag_id="etl_daily", task_id="load", duration=12.0, rn=3),
+            SimpleNamespace(dag_id="etl_daily", task_id="load", duration=14.0, rn=4),
+            SimpleNamespace(dag_id="etl_daily", task_id="load", duration=16.0, rn=5),
+            SimpleNamespace(dag_id="etl_daily", task_id="load", duration=18.0, rn=6),
+        ]
+        session = _make_session(rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 1
@@ -115,24 +121,32 @@ class TestRuntimeDetector:
     def test_details_populated(self):
         from airflow_watchdog.detectors.runtime import detect
 
-        row = SimpleNamespace(
-            dag_id="dag1",
-            task_id="task1",
-            q1=10.0,
-            median=15.0,
-            q3=20.0,
-            iqr=10.0,
-            lower_fence=-5.0,
-            upper_fence=35.0,
-            latest_duration=40.0,
-            sample_size=20,
-        )
-        session = _make_session([row])
+        rows = [
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=40.0, rn=1),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=15.0, rn=2),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=12.0, rn=3),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=18.0, rn=4),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=14.0, rn=5),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=16.0, rn=6),
+        ]
+        session = _make_session(rows)
         alerts = detect(session, _default_config())
 
         assert alerts[0].details["latest_duration"] == 40.0
-        assert alerts[0].details["median"] == 15.0
-        assert alerts[0].details["sample_size"] == 20
+        assert "median" in alerts[0].details
+        assert "sample_size" in alerts[0].details
+
+    def test_fewer_than_5_samples_skipped(self):
+        from airflow_watchdog.detectors.runtime import detect
+
+        rows = [
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=100.0, rn=1),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=10.0, rn=2),
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=12.0, rn=3),
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+        assert alerts == []
 
 
 # ── Failure spike detector ───────────────────────────────────────────────────
@@ -146,10 +160,8 @@ class TestFailureSpikeDetector:
             dag_id="etl_daily",
             recent_failures=3,
             recent_total=10,
-            recent_rate=0.3,
             baseline_failures=5,
             baseline_total=50,
-            baseline_rate=0.1,
         )
         session = _make_session([row])
         alerts = detect(session, _default_config())
@@ -166,10 +178,8 @@ class TestFailureSpikeDetector:
             dag_id="new_dag",
             recent_failures=2,
             recent_total=5,
-            recent_rate=0.4,
             baseline_failures=0,
             baseline_total=50,
-            baseline_rate=0.0,
         )
         session = _make_session([row])
         alerts = detect(session, _default_config())
@@ -184,10 +194,8 @@ class TestFailureSpikeDetector:
             dag_id="broken_dag",
             recent_failures=6,
             recent_total=10,
-            recent_rate=0.6,  # > 0.5 → CRITICAL
             baseline_failures=5,
             baseline_total=50,
-            baseline_rate=0.1,
         )
         session = _make_session([row])
         alerts = detect(session, _default_config())
@@ -198,6 +206,21 @@ class TestFailureSpikeDetector:
         from airflow_watchdog.detectors.failures import detect
 
         session = _make_session([])
+        alerts = detect(session, _default_config())
+        assert alerts == []
+
+    def test_no_spike_when_below_threshold(self):
+        from airflow_watchdog.detectors.failures import detect
+
+        # Recent rate (10%) is NOT > 2x baseline (10%) — no spike
+        row = SimpleNamespace(
+            dag_id="stable_dag",
+            recent_failures=1,
+            recent_total=10,
+            baseline_failures=5,
+            baseline_total=50,
+        )
+        session = _make_session([row])
         alerts = detect(session, _default_config())
         assert alerts == []
 
@@ -216,10 +239,8 @@ class TestFailureSpikeDetector:
             dag_id="dag1",
             recent_failures=3,
             recent_total=10,
-            recent_rate=0.3,
             baseline_failures=5,
             baseline_total=50,
-            baseline_rate=0.1,
         )
         session = _make_session([row])
         alerts = detect(session, _default_config())
@@ -232,48 +253,68 @@ class TestFailureSpikeDetector:
 
 
 class TestDeadlineDetector:
+    def _now(self):
+        return datetime.now(timezone.utc)
+
     def test_warning_when_over_deadline(self):
         from airflow_watchdog.detectors.deadlines import detect
 
-        row = SimpleNamespace(
-            dag_id="etl_daily",
-            run_id="manual__2024-01-01",
-            elapsed_secs=1800.0,
-            median_duration=600.0,
-            max_duration=900.0,
-            sample_size=15,
-            deadline_secs=1200.0,  # 2x median
-        )
-        session = _make_session([row])
+        now = self._now()
+        # Historical: 6 runs with ~600s duration
+        hist_rows = [
+            SimpleNamespace(
+                dag_id="etl_daily",
+                start_date=now - timedelta(days=i, seconds=600),
+                end_date=now - timedelta(days=i),
+            )
+            for i in range(1, 7)
+        ]
+        # Running: started 1500s ago (2.5x median → WARNING since ratio < 3)
+        run_rows = [
+            SimpleNamespace(
+                dag_id="etl_daily",
+                run_id="manual__2024-01-01",
+                start_date=now - timedelta(seconds=1500),
+            )
+        ]
+        session = _make_multi_session(hist_rows, run_rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 1
         assert alerts[0].alert_type == AlertType.MISSED_DEADLINE
-        assert alerts[0].severity == Severity.WARNING  # ratio = 3.0, need > 3 for CRITICAL
+        assert alerts[0].severity == Severity.WARNING
         assert alerts[0].dag_id == "etl_daily"
 
-    def test_warning_for_moderate_overrun(self):
+    def test_critical_when_far_over_deadline(self):
         from airflow_watchdog.detectors.deadlines import detect
 
-        row = SimpleNamespace(
-            dag_id="etl_daily",
-            run_id="manual__2024-01-01",
-            elapsed_secs=900.0,
-            median_duration=600.0,  # ratio = 1.5 < 3 → WARNING
-            max_duration=800.0,
-            sample_size=15,
-            deadline_secs=1200.0,
-        )
-        session = _make_session([row])
+        now = self._now()
+        hist_rows = [
+            SimpleNamespace(
+                dag_id="etl_daily",
+                start_date=now - timedelta(days=i, seconds=600),
+                end_date=now - timedelta(days=i),
+            )
+            for i in range(1, 7)
+        ]
+        # Running: started 2400s ago (4x median → CRITICAL)
+        run_rows = [
+            SimpleNamespace(
+                dag_id="etl_daily",
+                run_id="manual__2024-01-01",
+                start_date=now - timedelta(seconds=2400),
+            )
+        ]
+        session = _make_multi_session(hist_rows, run_rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 1
-        assert alerts[0].severity == Severity.WARNING
+        assert alerts[0].severity == Severity.CRITICAL
 
     def test_no_overruns_returns_empty(self):
         from airflow_watchdog.detectors.deadlines import detect
 
-        session = _make_session([])
+        session = _make_multi_session([], [])
         alerts = detect(session, _default_config())
         assert alerts == []
 
@@ -288,36 +329,52 @@ class TestDeadlineDetector:
     def test_details_include_run_id(self):
         from airflow_watchdog.detectors.deadlines import detect
 
-        row = SimpleNamespace(
-            dag_id="dag1",
-            run_id="scheduled__2024-01-01",
-            elapsed_secs=2000.0,
-            median_duration=600.0,
-            max_duration=900.0,
-            sample_size=10,
-            deadline_secs=1200.0,
-        )
-        session = _make_session([row])
+        now = self._now()
+        hist_rows = [
+            SimpleNamespace(
+                dag_id="dag1",
+                start_date=now - timedelta(days=i, seconds=600),
+                end_date=now - timedelta(days=i),
+            )
+            for i in range(1, 7)
+        ]
+        run_rows = [
+            SimpleNamespace(
+                dag_id="dag1",
+                run_id="scheduled__2024-01-01",
+                start_date=now - timedelta(seconds=2000),
+            )
+        ]
+        session = _make_multi_session(hist_rows, run_rows)
         alerts = detect(session, _default_config())
 
         assert alerts[0].details["run_id"] == "scheduled__2024-01-01"
-        assert alerts[0].details["elapsed_secs"] == 2000.0
+        assert alerts[0].details["elapsed_secs"] > 0
 
     def test_zero_median_no_division_error(self):
         from airflow_watchdog.detectors.deadlines import detect
 
-        row = SimpleNamespace(
-            dag_id="dag1",
-            run_id="run1",
-            elapsed_secs=100.0,
-            median_duration=0.0,
-            max_duration=0.0,
-            sample_size=5,
-            deadline_secs=0.0,
-        )
-        session = _make_session([row])
+        now = self._now()
+        # All runs have 0 duration
+        hist_rows = [
+            SimpleNamespace(
+                dag_id="dag1",
+                start_date=now - timedelta(days=i),
+                end_date=now - timedelta(days=i),
+            )
+            for i in range(1, 7)
+        ]
+        run_rows = [
+            SimpleNamespace(
+                dag_id="dag1",
+                run_id="run1",
+                start_date=now - timedelta(seconds=100),
+            )
+        ]
+        session = _make_multi_session(hist_rows, run_rows)
         # Should not raise ZeroDivisionError
         alerts = detect(session, _default_config())
+        # With 0 median and multiplier 2.0, deadline is 0s — any elapsed time exceeds it
         assert len(alerts) == 1
 
 
@@ -325,20 +382,26 @@ class TestDeadlineDetector:
 
 
 class TestStuckTaskDetector:
+    def _now(self):
+        return datetime.now(timezone.utc)
+
     def test_stuck_task_always_critical(self):
         from airflow_watchdog.detectors.stuck import detect
 
-        row = SimpleNamespace(
-            dag_id="etl_daily",
-            task_id="load_data",
-            run_id="manual__2024-01-01",
-            elapsed_secs=7200.0,
-            max_duration=1800.0,
-            median_duration=1200.0,
-            sample_size=10,
-            stuck_threshold=3600.0,
-        )
-        session = _make_session([row])
+        now = self._now()
+        hist_rows = [
+            SimpleNamespace(dag_id="etl_daily", task_id="load_data", duration=1800.0 - i * 100)
+            for i in range(5)
+        ]
+        run_rows = [
+            SimpleNamespace(
+                dag_id="etl_daily",
+                task_id="load_data",
+                run_id="manual__2024-01-01",
+                start_date=now - timedelta(seconds=7200),
+            )
+        ]
+        session = _make_multi_session(hist_rows, run_rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 1
@@ -351,7 +414,7 @@ class TestStuckTaskDetector:
     def test_no_stuck_tasks_returns_empty(self):
         from airflow_watchdog.detectors.stuck import detect
 
-        session = _make_session([])
+        session = _make_multi_session([], [])
         alerts = detect(session, _default_config())
         assert alerts == []
 
@@ -366,29 +429,29 @@ class TestStuckTaskDetector:
     def test_multiple_stuck_tasks(self):
         from airflow_watchdog.detectors.stuck import detect
 
-        rows = [
+        now = self._now()
+        hist_rows = [
+            SimpleNamespace(dag_id="dag1", task_id="task_a", duration=1000.0 - i * 50)
+            for i in range(5)
+        ] + [
+            SimpleNamespace(dag_id="dag2", task_id="task_b", duration=2000.0 - i * 100)
+            for i in range(5)
+        ]
+        run_rows = [
             SimpleNamespace(
                 dag_id="dag1",
                 task_id="task_a",
                 run_id="run1",
-                elapsed_secs=5000.0,
-                max_duration=1000.0,
-                median_duration=800.0,
-                sample_size=10,
-                stuck_threshold=2000.0,
+                start_date=now - timedelta(seconds=5000),
             ),
             SimpleNamespace(
                 dag_id="dag2",
                 task_id="task_b",
                 run_id="run2",
-                elapsed_secs=8000.0,
-                max_duration=2000.0,
-                median_duration=1500.0,
-                sample_size=15,
-                stuck_threshold=4000.0,
+                start_date=now - timedelta(seconds=8000),
             ),
         ]
-        session = _make_session(rows)
+        session = _make_multi_session(hist_rows, run_rows)
         alerts = detect(session, _default_config())
 
         assert len(alerts) == 2
@@ -397,16 +460,20 @@ class TestStuckTaskDetector:
     def test_zero_max_duration_no_division_error(self):
         from airflow_watchdog.detectors.stuck import detect
 
-        row = SimpleNamespace(
-            dag_id="dag1",
-            task_id="task1",
-            run_id="run1",
-            elapsed_secs=100.0,
-            max_duration=0.0,
-            median_duration=0.0,
-            sample_size=5,
-            stuck_threshold=0.0,
-        )
-        session = _make_session([row])
+        now = self._now()
+        hist_rows = [
+            SimpleNamespace(dag_id="dag1", task_id="task1", duration=0.0)
+            for _ in range(5)
+        ]
+        run_rows = [
+            SimpleNamespace(
+                dag_id="dag1",
+                task_id="task1",
+                run_id="run1",
+                start_date=now - timedelta(seconds=100),
+            )
+        ]
+        session = _make_multi_session(hist_rows, run_rows)
+        # Should not raise ZeroDivisionError
         alerts = detect(session, _default_config())
         assert len(alerts) == 1

@@ -5,7 +5,7 @@ Registers a ``/watchdog`` route in the Airflow webserver that shows an
 overview of all DAGs with their health status and highlights problems.
 
 Data comes from:
-1. The latest XCom from the ``watchdog_monitor`` DAG (alert results)
+1. The latest XCom from the ``airflow_watchdog_monitor`` DAG (alert results)
 2. Live queries against ``dag_run`` and ``task_instance`` for current status
 """
 
@@ -57,7 +57,7 @@ def _get_dashboard_data() -> dict:
                 ORDER BY start_date DESC
                 LIMIT 1
             ) dr ON TRUE
-            WHERE d.dag_id != 'watchdog_monitor'
+            WHERE d.dag_id != 'airflow_watchdog_monitor'
             ORDER BY d.dag_id
         """
         )
@@ -69,7 +69,7 @@ def _get_dashboard_data() -> dict:
             """\
             SELECT value
             FROM xcom
-            WHERE dag_id = 'watchdog_monitor'
+            WHERE dag_id = 'airflow_watchdog_monitor'
               AND task_id = 'run_detectors'
               AND key = 'watchdog_results'
             ORDER BY timestamp DESC
@@ -146,8 +146,13 @@ async def dashboard() -> HTMLResponse:
     with open(template_path) as f:
         html_template = f.read()
 
-    # Escape </script> to prevent injection via alert messages
-    safe_json = json.dumps(data).replace("</", "<\\/")
+    # OWASP: escape HTML-significant chars using unicode escapes (valid in JS)
+    safe_json = (
+        json.dumps(data)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
     html = html_template.replace("{{ DATA_JSON }}", safe_json)
 
     return HTMLResponse(content=html)

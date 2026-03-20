@@ -22,8 +22,8 @@ No Prometheus. No Grafana. No Datadog. Just `pip install` and go.
 ## Requirements
 
 - Apache Airflow >= 3.0.0
-- PostgreSQL metadata database (uses `PERCENTILE_CONT`)
 - Python >= 3.10
+- Any SQL metadata database supported by Airflow (PostgreSQL, MySQL, SQLite)
 
 ## Installation
 
@@ -33,7 +33,7 @@ pip install airflow-provider-watchdog
 
 That's it. The provider auto-registers:
 
-1. A **`watchdog_monitor` DAG** that runs every 30 minutes (configurable)
+1. A **`airflow_watchdog_monitor` DAG** that runs every 30 minutes (configurable)
 2. A **`/watchdog/` dashboard** accessible from the Airflow UI under Browse → Watchdog
 
 ## Configuration
@@ -68,7 +68,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 | `failure_spike_ratio` | `2.0` | Alert when recent rate exceeds this × baseline rate |
 | `deadline_multiplier` | `2.0` | Alert when DAG run exceeds this × median duration |
 | `stuck_multiplier` | `2.0` | Alert when task exceeds this × historical max duration |
-| `exclude_dags` | `[]` | DAG IDs to skip (`watchdog_monitor` is always excluded) |
+| `exclude_dags` | `[]` | DAG IDs to skip (`airflow_watchdog_monitor` is always excluded) |
 | `alert_emails` | `[]` | Email addresses for alert notifications |
 | `alert_slack_webhook` | `null` | Slack incoming webhook URL |
 
@@ -78,7 +78,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  watchdog_monitor DAG  (runs every 30 min)      │
+│  airflow_watchdog_monitor DAG  (runs every 30 min)      │
 │                                                 │
 │  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌─────┐ │
 │  │ Runtime │ │ Failures │ │Deadlines │ │Stuck│ │
@@ -129,7 +129,7 @@ Access it via **Browse → Watchdog** in the Airflow UI navbar.
 
 Alerts are dispatched through three channels:
 
-1. **Airflow task logs** — always on, visible in the `watchdog_monitor` DAG run logs
+1. **Airflow task logs** — always on, visible in the `airflow_watchdog_monitor` DAG run logs
 2. **Email** — via Airflow's built-in `send_email` (requires SMTP config in `airflow.cfg`)
 3. **Slack** — via incoming webhook (set `alert_slack_webhook` in config)
 
@@ -144,7 +144,6 @@ pytest
 
 ## Known limitations
 
-- **PostgreSQL only** — the SQL uses `PERCENTILE_CONT` which is PostgreSQL-specific. SQLite and MySQL are not currently supported. This is intentional for v0.1 — PostgreSQL is the recommended Airflow metadata DB for production.
 - **XCom-based dashboard** — alert history is limited to the latest watchdog run. A future version may store results in a dedicated table for historical trending.
 - **Tuple binding** — the `IN :exclude_dags` syntax may behave differently across SQLAlchemy versions. Tested with SQLAlchemy 1.4+ and 2.0.
 
@@ -153,7 +152,7 @@ pytest
 - [ ] Historical alert storage (dedicated table) for trend analysis
 - [ ] Sparkline charts in the dashboard showing duration trends
 - [ ] Per-DAG threshold overrides via a separate Variable or JSON config
-- [ ] MySQL compatibility (using `PERCENTILE_CONT` alternative)
+- [x] Multi-database support (PostgreSQL, MySQL, SQLite)
 - [ ] GitHub Actions CI
 - [ ] Contribution to the [Airflow ecosystem page](https://airflow.apache.org/ecosystem/)
 

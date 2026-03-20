@@ -15,7 +15,7 @@ Example Variable value (set via UI or CLI):
         "failure_spike_ratio": 2.0,
         "deadline_multiplier": 2.0,
         "stuck_multiplier": 2.0,
-        "exclude_dags": ["watchdog_monitor"],
+        "exclude_dags": ["airflow_watchdog_monitor"],
         "alert_emails": [],
         "alert_slack_webhook": null
     }
@@ -50,7 +50,7 @@ _DEFAULTS: dict[str, Any] = {
     # Stuck: flag if a running task exceeds multiplier × historical max
     "stuck_multiplier": 2.0,
     # DAGs to skip (always excludes the watchdog DAG itself)
-    "exclude_dags": ["watchdog_monitor"],
+    "exclude_dags": ["airflow_watchdog_monitor"],
     # Alerting
     "alert_emails": [],
     "alert_slack_webhook": None,
@@ -89,7 +89,7 @@ def load_config() -> WatchdogConfig:
 
     # Ensure the watchdog's own DAG is always excluded
     excluded = set(merged["exclude_dags"])
-    excluded.add("watchdog_monitor")
+    excluded.add("airflow_watchdog_monitor")
     merged["exclude_dags"] = sorted(excluded)
 
     return WatchdogConfig(
