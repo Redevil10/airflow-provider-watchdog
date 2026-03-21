@@ -300,7 +300,7 @@
         }
 
         // Snapshot for dirty checking
-        const originalState = JSON.stringify(getStatePayload());
+        let savedState = JSON.stringify(getStatePayload());
 
         function getStatePayload() {
             return {
@@ -345,7 +345,7 @@
         }
 
         function updateDirty() {
-            const dirty = JSON.stringify(getStatePayload()) !== originalState;
+            const dirty = JSON.stringify(getStatePayload()) !== savedState;
             document.getElementById("saveBtn").disabled = !dirty;
             if (!dirty) {
                 document.getElementById("statusMsg").textContent = "";
@@ -436,8 +436,8 @@
                 if (result.success) {
                     msg.textContent = "Saved successfully.";
                     msg.className = "status-msg success";
-                    // Update original state so dirty check resets
-                    Object.defineProperty(window, "_origState", { value: JSON.stringify(payload), writable: true });
+                    // Update baseline so dirty check resets
+                    savedState = JSON.stringify(payload);
                 } else {
                     msg.textContent = result.error || "Save failed.";
                     msg.className = "status-msg error";

@@ -11,7 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Schedule anomaly detector** — flags tasks whose start or end time-of-day deviates from historical norms (IQR-based, handles midnight wraparound)
 - **Per-DAG detector enable/disable** — `disable_detectors` (global) and `dag_overrides` (per-DAG) configuration fields
-- Tests for per-DAG config (`is_detector_enabled`) and schedule anomaly detector (7 tests)
+- **Configuration UI** at `/watchdog/config` — toggle detectors on/off globally or per DAG with a visual grid
+- **MS Teams alerting** via Adaptive Card webhook (`alert_teams_webhook` config)
+- `schedule_interval_minutes` config now wired to DAG schedule (read at parse time)
+
+### Fixed
+
+- Email alerts now HTML-escape DAG/task IDs to prevent XSS in email clients
+- Config POST endpoint validates detector names against `AlertType` enum
+- Config page dirty-check bug after saving (Save button now re-enables correctly)
+- Consolidated duplicate `_fmt` duration helper into shared `_stats.fmt_duration`
 
 ## [0.2.0] - 2026-03-21
 

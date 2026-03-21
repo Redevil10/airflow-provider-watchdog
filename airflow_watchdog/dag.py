@@ -93,16 +93,31 @@ def _run_watchdog(**context) -> str:
 
 
 # ── DAG definition ───────────────────────────────────────────────────────────
-# The schedule is read at parse time; changing it requires a webserver restart
-# (or a Variable-aware approach).  Default: every 30 minutes.
+# The schedule is read at parse time; changing it requires a scheduler restart.
+
+
+def _get_schedule_minutes() -> int:
+    """Read schedule_interval_minutes from the Airflow Variable at parse time."""
+    try:
+        import json as _json
+
+        from airflow.models import Variable
+
+        raw = Variable.get("watchdog_config", default_var="{}")
+        cfg = _json.loads(raw) if isinstance(raw, str) else raw
+        return int(cfg.get("schedule_interval_minutes", 30))
+    except Exception:
+        return 30
+
 
 with DAG(
     dag_id="airflow_watchdog_monitor",
     description=(
         "Monitors DAG/task health"
-        " — runtime anomalies, failure spikes, missed deadlines, stuck tasks, schedule anomalies."
+        " — runtime anomalies, failure spikes, missed deadlines,"
+        " stuck tasks, schedule anomalies."
     ),
-    schedule=timedelta(minutes=30),
+    schedule=timedelta(minutes=_get_schedule_minutes()),
     start_date=None,  # Airflow 3: no fixed start_date needed for timedelta schedules
     catchup=False,
     max_active_runs=1,

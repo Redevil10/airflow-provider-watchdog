@@ -141,3 +141,50 @@ class TestDispatch:
         req = mock_urlopen.call_args.args[0]
         payload = json.loads(req.data)
         assert "5 more" in payload["text"]
+
+    def test_teams_sent_when_configured(self):
+        """MS Teams webhook is called when configured."""
+        config = WatchdogConfig(alert_teams_webhook="https://outlook.office.com/webhook/test")
+        alert = _make_alert()
+
+        with patch("airflow_watchdog.alerting.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = MagicMock()
+            dispatch([alert], config)
+
+        mock_urlopen.assert_called_once()
+        req = mock_urlopen.call_args.args[0]
+        payload = json.loads(req.data)
+        assert payload["type"] == "message"
+        card = payload["attachments"][0]["content"]
+        assert card["type"] == "AdaptiveCard"
+        assert "1 alert(s)" in card["body"][0]["text"]
+
+    def test_teams_not_sent_when_unconfigured(self):
+        """No Teams notification when webhook is None."""
+        config = WatchdogConfig(alert_teams_webhook=None)
+        with patch("airflow_watchdog.alerting.urlopen") as mock_urlopen:
+            dispatch([_make_alert()], config)
+        mock_urlopen.assert_not_called()
+
+    def test_teams_failure_does_not_raise(self):
+        """Teams failure is logged but does not propagate."""
+        config = WatchdogConfig(alert_teams_webhook="https://outlook.office.com/webhook/test")
+        with patch(
+            "airflow_watchdog.alerting.urlopen",
+            side_effect=Exception("Network error"),
+        ):
+            dispatch([_make_alert()], config)
+
+    def test_teams_caps_at_20_alerts(self):
+        """Teams message truncates after 20 alerts."""
+        config = WatchdogConfig(alert_teams_webhook="https://outlook.office.com/webhook/test")
+        alerts = [_make_alert(dag_id=f"dag_{i}") for i in range(25)]
+
+        with patch("airflow_watchdog.alerting.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = MagicMock()
+            dispatch(alerts, config)
+
+        req = mock_urlopen.call_args.args[0]
+        payload = json.loads(req.data)
+        facts = payload["attachments"][0]["content"]["body"][1]["facts"]
+        assert len(facts) == 21  # 20 alerts + "...and 5 more"

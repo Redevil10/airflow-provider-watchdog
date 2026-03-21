@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **License** | [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) |
-| **PyPI** | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/) [![Downloads](https://static.pepy.tech/badge/airflow-provider-watchdog)](https://pepy.tech/project/airflow-provider-watchdog) |
+| **PyPI** | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/) [![Downloads](https://img.shields.io/pypi/dm/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/) |
 | **CI** | [![lint](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml) [![tests](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml) [![codecov](https://codecov.io/github/Redevil10/airflow-provider-watchdog/graph/badge.svg)](https://codecov.io/gh/Redevil10/airflow-provider-watchdog) |
 
 A lightweight, zero-dependency Airflow provider that monitors DAG and task health by querying the metadata database.
@@ -60,7 +60,8 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
         }
     },
     "alert_emails": ["team@example.com"],
-    "alert_slack_webhook": "https://hooks.slack.com/services/..."
+    "alert_slack_webhook": "https://hooks.slack.com/services/...",
+    "alert_teams_webhook": "https://outlook.office.com/webhook/..."
 }
 ```
 
@@ -82,6 +83,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 | `dag_overrides` | `{}` | Per-DAG overrides: `{"dag_id": {"disable_detectors": [...]}}` |
 | `alert_emails` | `[]` | Email addresses for alert notifications |
 | `alert_slack_webhook` | `null` | Slack incoming webhook URL |
+| `alert_teams_webhook` | `null` | MS Teams incoming webhook URL |
 
 ## How it works
 
@@ -140,11 +142,12 @@ Access it via **Browse → Watchdog** in the Airflow UI navbar.
 
 ## Alerting
 
-Alerts are dispatched through three channels:
+Alerts are dispatched through four channels:
 
 1. **Airflow task logs** — always on, visible in the `airflow_watchdog_monitor` DAG run logs
 2. **Email** — via Airflow's built-in `send_email` (requires SMTP config in `airflow.cfg`)
 3. **Slack** — via incoming webhook (set `alert_slack_webhook` in config)
+4. **MS Teams** — via incoming webhook with Adaptive Card (set `alert_teams_webhook` in config)
 
 ## Development
 
