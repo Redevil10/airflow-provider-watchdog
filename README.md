@@ -33,7 +33,7 @@ pip install airflow-provider-watchdog
 
 That's it. The provider auto-registers:
 
-1. A **`airflow_watchdog_monitor` DAG** that runs every 30 minutes (configurable)
+1. An **`airflow_watchdog_monitor` DAG** that runs every 30 minutes (configurable)
 2. A **`/watchdog/` dashboard** accessible from the Airflow UI under Browse → Watchdog
 
 ## Configuration
@@ -136,16 +136,15 @@ Alerts are dispatched through three channels:
 ## Development
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/airflow-provider-watchdog.git
+git clone https://github.com/Redevil10/airflow-provider-watchdog.git
 cd airflow-provider-watchdog
-pip install -e ".[dev]"
-pytest
+uv sync --extra dev
+uv run pytest
 ```
 
 ## Known limitations
 
 - **XCom-based dashboard** — alert history is limited to the latest watchdog run. A future version may store results in a dedicated table for historical trending.
-- **Tuple binding** — the `IN :exclude_dags` syntax may behave differently across SQLAlchemy versions. Tested with SQLAlchemy 1.4+ and 2.0.
 
 ## Roadmap
 
@@ -153,7 +152,7 @@ pytest
 - [ ] Sparkline charts in the dashboard showing duration trends
 - [ ] Per-DAG threshold overrides via a separate Variable or JSON config
 - [x] Multi-database support (PostgreSQL, MySQL, SQLite)
-- [ ] GitHub Actions CI
+- [x] GitHub Actions CI (lint, test, publish)
 - [ ] Contribution to the [Airflow ecosystem page](https://airflow.apache.org/ecosystem/)
 
 ## License
