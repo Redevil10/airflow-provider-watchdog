@@ -15,7 +15,7 @@ import json
 import logging
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 logger = logging.getLogger(__name__)
@@ -175,3 +175,100 @@ async def api_data() -> JSONResponse:
     """JSON API endpoint for dashboard data."""
     data = _get_dashboard_data()
     return JSONResponse(content=data)
+
+
+# ── Config UI ────────────────────────────────────────────────────────────────
+
+
+def _get_config_data() -> dict:
+    """Load current config and DAG list for the config page."""
+    from airflow.settings import Session
+
+    session = Session()
+    data: dict = {"dags": [], "config": {}, "detector_names": []}
+
+    try:
+        from airflow_watchdog.config import load_config
+        from airflow_watchdog.detectors import AlertType
+
+        config = load_config()
+        data["detector_names"] = [e.value for e in AlertType]
+        data["config"] = {
+            "disable_detectors": config.disable_detectors,
+            "dag_overrides": config.dag_overrides,
+        }
+
+        # Get all DAGs
+        from sqlalchemy import text
+
+        dag_query = text(
+            "SELECT dag_id FROM dag WHERE dag_id != 'airflow_watchdog_monitor' ORDER BY dag_id"
+        )
+        dag_rows = session.execute(dag_query).fetchall()
+        data["dags"] = [row.dag_id for row in dag_rows]
+
+    except Exception:
+        logger.exception("Error loading config data")
+        data["error"] = "Failed to load configuration data."
+    finally:
+        session.close()
+
+    return data
+
+
+def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -> dict:
+    """Update the disable_detectors and dag_overrides fields in the Airflow Variable."""
+    try:
+        from airflow.models import Variable
+
+        from airflow_watchdog.config import _VARIABLE_KEY
+
+        raw = Variable.get(_VARIABLE_KEY, default_var="{}")
+        current = json.loads(raw) if isinstance(raw, str) else raw
+
+        current["disable_detectors"] = disable_detectors
+        # Remove empty overrides to keep the JSON clean
+        current["dag_overrides"] = {
+            dag_id: cfg for dag_id, cfg in dag_overrides.items() if cfg.get("disable_detectors")
+        }
+
+        Variable.set(_VARIABLE_KEY, json.dumps(current))
+        return {"success": True}
+
+    except Exception:
+        logger.exception("Error saving watchdog config")
+        return {"success": False, "error": "Failed to save configuration."}
+
+
+@watchdog_app.get("/config")
+async def config_page() -> HTMLResponse:
+    """Serve the config UI page."""
+    data = _get_config_data()
+    template_path = os.path.join(os.path.dirname(__file__), "templates", "config.html")
+
+    with open(template_path) as f:
+        html_template = f.read()
+
+    safe_json = (
+        json.dumps(data).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
+    )
+    html = html_template.replace("{{ DATA_JSON }}", safe_json)
+    return HTMLResponse(content=html)
+
+
+@watchdog_app.get("/api/config")
+async def api_config() -> JSONResponse:
+    """JSON API endpoint for config data."""
+    data = _get_config_data()
+    return JSONResponse(content=data)
+
+
+@watchdog_app.post("/api/config")
+async def api_config_save(request: Request) -> JSONResponse:
+    """Save config changes."""
+    body = await request.json()
+    result = _save_config(
+        disable_detectors=body.get("disable_detectors", []),
+        dag_overrides=body.get("dag_overrides", {}),
+    )
+    return JSONResponse(content=result)
