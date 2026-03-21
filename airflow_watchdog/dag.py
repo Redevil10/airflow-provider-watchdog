@@ -2,7 +2,7 @@
 Auto-registered Watchdog monitoring DAG.
 
 This DAG is automatically discovered by Airflow when the provider is installed.
-It runs all four detectors on a configurable schedule and dispatches alerts.
+It runs all five detectors on a configurable schedule and dispatches alerts.
 
 Configuration via Airflow Variable ``watchdog_config`` (see config.py).
 """
@@ -29,6 +29,7 @@ def _run_watchdog(**context) -> str:
     from airflow_watchdog.detectors.deadlines import detect as detect_deadlines
     from airflow_watchdog.detectors.failures import detect as detect_failures
     from airflow_watchdog.detectors.runtime import detect as detect_runtime
+    from airflow_watchdog.detectors.schedule import detect as detect_schedule
     from airflow_watchdog.detectors.stuck import detect as detect_stuck
 
     config = load_config()
@@ -37,20 +38,29 @@ def _run_watchdog(**context) -> str:
     all_alerts: list[Alert] = []
 
     detectors = [
-        ("runtime", detect_runtime),
-        ("failures", detect_failures),
-        ("deadlines", detect_deadlines),
-        ("stuck", detect_stuck),
+        ("runtime_anomaly", detect_runtime),
+        ("failure_spike", detect_failures),
+        ("missed_deadline", detect_deadlines),
+        ("stuck_task", detect_stuck),
+        ("schedule_anomaly", detect_schedule),
     ]
 
     try:
         for name, detect_fn in detectors:
+            if name in config.disable_detectors:
+                logger.info("Detector '%s' is globally disabled; skipping", name)
+                continue
             try:
                 all_alerts.extend(detect_fn(session, config))
             except Exception:
                 logger.exception("Detector '%s' failed; continuing with remaining detectors", name)
     finally:
         session.close()
+
+    # Apply per-DAG detector filtering
+    all_alerts = [
+        a for a in all_alerts if config.is_detector_enabled(a.alert_type.value, a.dag_id)
+    ]
 
     dispatch(all_alerts, config)
 
@@ -90,7 +100,7 @@ with DAG(
     dag_id="airflow_watchdog_monitor",
     description=(
         "Monitors DAG/task health"
-        " — runtime anomalies, failure spikes, missed deadlines, stuck tasks."
+        " — runtime anomalies, failure spikes, missed deadlines, stuck tasks, schedule anomalies."
     ),
     schedule=timedelta(minutes=30),
     start_date=None,  # Airflow 3: no fixed start_date needed for timedelta schedules
