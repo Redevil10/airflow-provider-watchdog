@@ -61,7 +61,8 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
     },
     "alert_emails": ["team@example.com"],
     "alert_slack_webhook": "https://hooks.slack.com/services/...",
-    "alert_teams_webhook": "https://outlook.office.com/webhook/..."
+    "alert_teams_webhook": "https://outlook.office.com/webhook/...",
+    "alert_discord_webhook": "https://discord.com/api/webhooks/..."
 }
 ```
 
@@ -84,6 +85,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 | `alert_emails` | `[]` | Email addresses for alert notifications |
 | `alert_slack_webhook` | `null` | Slack incoming webhook URL |
 | `alert_teams_webhook` | `null` | MS Teams incoming webhook URL |
+| `alert_discord_webhook` | `null` | Discord incoming webhook URL |
 
 ## How it works
 
@@ -142,12 +144,13 @@ Access it via **Browse → Watchdog** in the Airflow UI navbar.
 
 ## Alerting
 
-Alerts are dispatched through four channels:
+Alerts are dispatched through five channels:
 
 1. **Airflow task logs** — always on, visible in the `airflow_watchdog_monitor` DAG run logs
 2. **Email** — via Airflow's built-in `send_email` (requires SMTP config in `airflow.cfg`)
 3. **Slack** — via incoming webhook (set `alert_slack_webhook` in config)
 4. **MS Teams** — via incoming webhook with Adaptive Card (set `alert_teams_webhook` in config)
+5. **Discord** — via incoming webhook (set `alert_discord_webhook` in config)
 
 ## Development
 

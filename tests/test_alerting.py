@@ -188,3 +188,34 @@ class TestDispatch:
         payload = json.loads(req.data)
         facts = payload["attachments"][0]["content"]["body"][1]["facts"]
         assert len(facts) == 21  # 20 alerts + "...and 5 more"
+
+    def test_discord_sent_when_configured(self):
+        """Discord webhook is called when configured."""
+        config = WatchdogConfig(alert_discord_webhook="https://discord.com/api/webhooks/test")
+        alert = _make_alert()
+
+        with patch("airflow_watchdog.alerting.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = MagicMock()
+            dispatch([alert], config)
+
+        mock_urlopen.assert_called_once()
+        req = mock_urlopen.call_args.args[0]
+        payload = json.loads(req.data)
+        assert "content" in payload
+        assert "Watchdog" in payload["content"]
+
+    def test_discord_not_sent_when_unconfigured(self):
+        """No Discord notification when webhook is None."""
+        config = WatchdogConfig(alert_discord_webhook=None)
+        with patch("airflow_watchdog.alerting.urlopen") as mock_urlopen:
+            dispatch([_make_alert()], config)
+        mock_urlopen.assert_not_called()
+
+    def test_discord_failure_does_not_raise(self):
+        """Discord failure is logged but does not propagate."""
+        config = WatchdogConfig(alert_discord_webhook="https://discord.com/api/webhooks/test")
+        with patch(
+            "airflow_watchdog.alerting.urlopen",
+            side_effect=Exception("Network error"),
+        ):
+            dispatch([_make_alert()], config)

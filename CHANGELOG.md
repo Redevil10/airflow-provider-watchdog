@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Per-DAG detector enable/disable** — `disable_detectors` (global) and `dag_overrides` (per-DAG) configuration fields
 - **Configuration UI** at `/watchdog/config` — toggle detectors on/off globally or per DAG with a visual grid
 - **MS Teams alerting** via Adaptive Card webhook (`alert_teams_webhook` config)
+- **Discord alerting** via webhook (`alert_discord_webhook` config)
 - `schedule_interval_minutes` config now wired to DAG schedule (read at parse time)
 
 ### Fixed

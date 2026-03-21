@@ -61,6 +61,7 @@ _DEFAULTS: dict[str, Any] = {
     "alert_emails": [],
     "alert_slack_webhook": None,
     "alert_teams_webhook": None,
+    "alert_discord_webhook": None,
 }
 
 
@@ -87,6 +88,7 @@ class WatchdogConfig:
     alert_emails: list[str] = field(default_factory=lambda: list(_DEFAULTS["alert_emails"]))
     alert_slack_webhook: str | None = _DEFAULTS["alert_slack_webhook"]
     alert_teams_webhook: str | None = _DEFAULTS["alert_teams_webhook"]
+    alert_discord_webhook: str | None = _DEFAULTS["alert_discord_webhook"]
 
     def is_detector_enabled(self, detector_name: str, dag_id: str) -> bool:
         """Check if a detector is enabled for a given DAG."""

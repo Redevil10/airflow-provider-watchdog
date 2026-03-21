@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session
 
 from airflow_watchdog.config import WatchdogConfig
 from airflow_watchdog.detectors import Alert, AlertType, Severity
+from airflow_watchdog.detectors._stats import ensure_tz, median
 from airflow_watchdog.detectors._stats import fmt_duration as _fmt
-from airflow_watchdog.detectors._stats import median
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ def detect(session: Session, config: WatchdogConfig) -> list[Alert]:
             continue
 
         max_duration, median_duration = stats
-        elapsed_secs = (now - row.start_date).total_seconds()
+        elapsed_secs = (now - ensure_tz(row.start_date)).total_seconds()
         stuck_threshold = config.stuck_multiplier * max_duration
 
         if elapsed_secs <= stuck_threshold:
