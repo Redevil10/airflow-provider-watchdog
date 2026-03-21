@@ -226,7 +226,10 @@
 <body>
     <div class="header">
         <h1><span>🐕</span> Watchdog Dashboard</h1>
-        <div class="refresh-info">Auto-refreshes every 60s</div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <a href="/watchdog/config" style="color: var(--blue); text-decoration: none; font-size: 0.9rem;">&#9881; Configuration</a>
+            <span class="refresh-info">Auto-refreshes every 60s</span>
+        </div>
     </div>
 
     <div class="summary" id="summary"></div>

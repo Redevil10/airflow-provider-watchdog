@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watchdog Configuration</title>
+    <style>
+        :root {
+            --bg: #f8f9fa;
+            --surface: #ffffff;
+            --surface-hover: #f1f3f5;
+            --border: #dee2e6;
+            --text: #212529;
+            --text-muted: #6c757d;
+            --green: #198754;
+            --green-bg: rgba(25, 135, 84, 0.10);
+            --yellow: #cc9a06;
+            --yellow-bg: rgba(204, 154, 6, 0.10);
+            --red: #dc3545;
+            --red-bg: rgba(220, 53, 69, 0.10);
+            --blue: #0d6efd;
+            --blue-bg: rgba(13, 110, 253, 0.08);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f1117;
+                --surface: #1a1d27;
+                --surface-hover: #22263a;
+                --border: #2a2e3d;
+                --text: #e1e4ed;
+                --text-muted: #8b8fa3;
+                --green: #22c55e;
+                --green-bg: rgba(34, 197, 94, 0.12);
+                --yellow: #eab308;
+                --yellow-bg: rgba(234, 179, 8, 0.12);
+                --red: #ef4444;
+                --red-bg: rgba(239, 68, 68, 0.12);
+                --blue: #3b82f6;
+                --blue-bg: rgba(59, 130, 246, 0.12);
+            }
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header h1 span { font-size: 1.6rem; }
+
+        .nav-link {
+            color: var(--blue);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .nav-link:hover { text-decoration: underline; }
+
+        .table-container {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            padding: 16px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .section-subtitle {
+            padding: 10px 20px;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: center;
+            padding: 10px 12px;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            position: sticky;
+            top: 0;
+        }
+
+        th:first-child {
+            text-align: left;
+            padding-left: 20px;
+            min-width: 200px;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        td:first-child {
+            text-align: left;
+            padding-left: 20px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+
+        tr:hover { background: var(--surface-hover); }
+
+        tr.global-row {
+            background: var(--blue-bg);
+            font-weight: 600;
+        }
+
+        tr.global-row:hover { background: var(--blue-bg); }
+
+        tr.global-row td:first-child {
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border);
+            border-radius: 20px;
+            transition: 0.2s;
+        }
+
+        .toggle .slider::before {
+            content: "";
+            position: absolute;
+            height: 14px;
+            width: 14px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--surface);
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        .toggle input:checked + .slider {
+            background: var(--green);
+        }
+
+        .toggle input:checked + .slider::before {
+            transform: translateX(16px);
+        }
+
+        /* Actions bar */
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.15s;
+        }
+
+        .btn:hover { opacity: 0.85; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-primary {
+            background: var(--blue);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .status-msg {
+            font-size: 0.85rem;
+            margin-left: 8px;
+        }
+
+        .status-msg.success { color: var(--green); }
+        .status-msg.error { color: var(--red); }
+
+        .search-box {
+            padding: 8px 16px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 0.85rem;
+            width: 260px;
+            outline: none;
+        }
+
+        .search-box:focus { border-color: var(--blue); }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .dag-count {
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><span>&#9881;</span> Watchdog Configuration</h1>
+        <a class="nav-link" href="/watchdog/">&larr; Back to Dashboard</a>
+    </div>
+
+    <div class="table-container">
+        <div class="section-title">Detector Enable / Disable</div>
+        <div class="section-subtitle">
+            Toggle detectors on or off globally or per DAG.
+            Green = enabled, grey = disabled. Changes take effect on the next watchdog run.
+        </div>
+        <div class="toolbar">
+            <input type="text" class="search-box" id="dagSearch" placeholder="Filter DAGs...">
+            <span class="dag-count" id="dagCount"></span>
+        </div>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="actions">
+        <button class="btn btn-primary" id="saveBtn" onclick="saveConfig()">Save Changes</button>
+        <button class="btn btn-secondary" onclick="resetConfig()">Reset</button>
+        <span class="status-msg" id="statusMsg"></span>
+    </div>
+
+    <script>
+        const DATA = {{ DATA_JSON }};
+        const detectors = DATA.detector_names || [];
+        const dags = DATA.dags || [];
+
+        // State: track enabled status. true = enabled.
+        let globalDisabled = new Set(DATA.config.disable_detectors || []);
+        let dagOverrides = {};
+        for (const [dagId, cfg] of Object.entries(DATA.config.dag_overrides || {})) {
+            dagOverrides[dagId] = new Set(cfg.disable_detectors || []);
+        }
+
+        // Snapshot for dirty checking
+        const originalState = JSON.stringify(getStatePayload());
+
+        function getStatePayload() {
+            return {
+                disable_detectors: Array.from(globalDisabled).sort(),
+                dag_overrides: Object.fromEntries(
+                    Object.entries(dagOverrides)
+                        .filter(([, s]) => s.size > 0)
+                        .map(([k, s]) => [k, { disable_detectors: Array.from(s).sort() }])
+                ),
+            };
+        }
+
+        function isEnabled(dagId, detector) {
+            if (globalDisabled.has(detector)) return false;
+            if (dagOverrides[dagId] && dagOverrides[dagId].has(detector)) return false;
+            return true;
+        }
+
+        function isGlobalEnabled(detector) {
+            return !globalDisabled.has(detector);
+        }
+
+        function toggleGlobal(detector) {
+            if (globalDisabled.has(detector)) {
+                globalDisabled.delete(detector);
+            } else {
+                globalDisabled.add(detector);
+            }
+            render();
+            updateDirty();
+        }
+
+        function toggleDag(dagId, detector) {
+            if (!dagOverrides[dagId]) dagOverrides[dagId] = new Set();
+            if (dagOverrides[dagId].has(detector)) {
+                dagOverrides[dagId].delete(detector);
+            } else {
+                dagOverrides[dagId].add(detector);
+            }
+            render();
+            updateDirty();
+        }
+
+        function updateDirty() {
+            const dirty = JSON.stringify(getStatePayload()) !== originalState;
+            document.getElementById("saveBtn").disabled = !dirty;
+            if (!dirty) {
+                document.getElementById("statusMsg").textContent = "";
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement("div");
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        function detectorLabel(name) {
+            return name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        function makeToggle(checked, onChange, disabled) {
+            const id = "t_" + Math.random().toString(36).slice(2);
+            const dis = disabled ? "disabled" : "";
+            const chk = checked ? "checked" : "";
+            return `<label class="toggle">
+                <input type="checkbox" id="${id}" ${chk} ${dis} onchange="${onChange}">
+                <span class="slider"></span>
+            </label>`;
+        }
+
+        function render() {
+            const searchTerm = (document.getElementById("dagSearch").value || "").toLowerCase();
+            const filteredDags = dags.filter(d => d.toLowerCase().includes(searchTerm));
+
+            // Header
+            const head = document.getElementById("tableHead");
+            head.innerHTML = `<tr>
+                <th>DAG / Scope</th>
+                ${detectors.map(d => `<th>${escapeHtml(detectorLabel(d))}</th>`).join("")}
+            </tr>`;
+
+            // Body
+            const body = document.getElementById("tableBody");
+            let rows = "";
+
+            // Global row
+            rows += `<tr class="global-row"><td>Global (all DAGs)</td>`;
+            for (const det of detectors) {
+                const on = isGlobalEnabled(det);
+                rows += `<td>${makeToggle(on, `toggleGlobal('${det}')`)}</td>`;
+            }
+            rows += "</tr>";
+
+            // Per-DAG rows
+            for (const dagId of filteredDags) {
+                rows += `<tr><td>${escapeHtml(dagId)}</td>`;
+                for (const det of detectors) {
+                    const globalOff = globalDisabled.has(det);
+                    const dagEnabled = isEnabled(dagId, det);
+                    // If globally disabled, show disabled toggle
+                    rows += `<td>${makeToggle(
+                        dagEnabled,
+                        `toggleDag('${dagId.replace(/'/g, "\\'")}', '${det}')`,
+                        globalOff
+                    )}</td>`;
+                }
+                rows += "</tr>";
+            }
+
+            body.innerHTML = rows;
+
+            // Count
+            document.getElementById("dagCount").textContent =
+                `${filteredDags.length} of ${dags.length} DAGs`;
+        }
+
+        async function saveConfig() {
+            const btn = document.getElementById("saveBtn");
+            const msg = document.getElementById("statusMsg");
+            btn.disabled = true;
+            msg.textContent = "Saving...";
+            msg.className = "status-msg";
+
+            try {
+                const payload = getStatePayload();
+                const resp = await fetch("/watchdog/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                });
+                const result = await resp.json();
+                if (result.success) {
+                    msg.textContent = "Saved successfully.";
+                    msg.className = "status-msg success";
+                    // Update original state so dirty check resets
+                    Object.defineProperty(window, "_origState", { value: JSON.stringify(payload), writable: true });
+                } else {
+                    msg.textContent = result.error || "Save failed.";
+                    msg.className = "status-msg error";
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                msg.textContent = "Network error. Please try again.";
+                msg.className = "status-msg error";
+                btn.disabled = false;
+            }
+        }
+
+        function resetConfig() {
+            globalDisabled = new Set(DATA.config.disable_detectors || []);
+            dagOverrides = {};
+            for (const [dagId, cfg] of Object.entries(DATA.config.dag_overrides || {})) {
+                dagOverrides[dagId] = new Set(cfg.disable_detectors || []);
+            }
+            render();
+            updateDirty();
+            document.getElementById("statusMsg").textContent = "";
+        }
+
+        // Search filter
+        document.getElementById("dagSearch").addEventListener("input", render);
+
+        // Initial render
+        render();
+        updateDirty();
+    </script>
+</body>
+</html>

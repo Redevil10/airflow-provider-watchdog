@@ -211,3 +211,121 @@ class TestDashboardEndpoints:
         body = resp.json()
         assert "dags" in body
         assert "summary" in body
+
+
+# ── Config UI tests ──────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def _mock_airflow_with_config():
+    """Patch Airflow imports for config endpoints."""
+    mock_session_cls = MagicMock()
+    mock_settings = MagicMock()
+    mock_settings.Session = mock_session_cls
+
+    mock_variable = MagicMock()
+    mock_variable.get.return_value = json.dumps(
+        {
+            "disable_detectors": ["stuck_task"],
+            "dag_overrides": {"etl": {"disable_detectors": ["runtime_anomaly"]}},
+        }
+    )
+    mock_models = MagicMock()
+    mock_models.Variable = mock_variable
+
+    with patch.dict(
+        "sys.modules",
+        {
+            "airflow": MagicMock(),
+            "airflow.settings": mock_settings,
+            "airflow.models": mock_models,
+        },
+    ):
+        yield mock_session_cls, mock_variable
+
+
+class TestConfigEndpoints:
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_config_page_returns_html(self, _mock_airflow_with_config):
+        mock_session_cls, _ = _mock_airflow_with_config
+        session = MagicMock()
+        # DAG query returns one row
+        r1 = MagicMock()
+        r1.fetchall.return_value = [SimpleNamespace(dag_id="etl_daily")]
+        session.execute.return_value = r1
+        mock_session_cls.return_value = session
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        resp = client.get("/config")
+
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Watchdog Configuration" in resp.text
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_get(self, _mock_airflow_with_config):
+        mock_session_cls, _ = _mock_airflow_with_config
+        session = MagicMock()
+        r1 = MagicMock()
+        r1.fetchall.return_value = [SimpleNamespace(dag_id="etl_daily")]
+        session.execute.return_value = r1
+        mock_session_cls.return_value = session
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        resp = client.get("/api/config")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "detector_names" in body
+        assert "config" in body
+        assert "dags" in body
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        payload = {
+            "disable_detectors": ["schedule_anomaly"],
+            "dag_overrides": {"etl": {"disable_detectors": ["runtime_anomaly"]}},
+        }
+        resp = client.post("/api/config", json=payload)
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        # Verify Variable.set was called
+        mock_variable.set.assert_called_once()
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save_cleans_empty_overrides(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        payload = {
+            "disable_detectors": [],
+            "dag_overrides": {"etl": {"disable_detectors": []}},
+        }
+        resp = client.post("/api/config", json=payload)
+
+        assert resp.status_code == 200
+        # Check that empty overrides are stripped from saved JSON
+        saved_json = mock_variable.set.call_args[0][1]
+        saved = json.loads(saved_json)
+        assert "etl" not in saved.get("dag_overrides", {})
