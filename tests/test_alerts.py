@@ -38,3 +38,4 @@ def test_alert_types_enum():
     assert AlertType.FAILURE_SPIKE.value == "failure_spike"
     assert AlertType.MISSED_DEADLINE.value == "missed_deadline"
     assert AlertType.STUCK_TASK.value == "stuck_task"
+    assert AlertType.SCHEDULE_ANOMALY.value == "schedule_anomaly"

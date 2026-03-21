@@ -5,6 +5,7 @@ Sends watchdog alerts through Airflow's native channels:
 - Airflow task logs (always)
 - Email via ``airflow.utils.email.send_email`` (if configured)
 - Slack webhook (if configured)
+- MS Teams webhook via Adaptive Card (if configured)
 
 No external dependencies — uses only what Airflow already provides.
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+from html import escape as _esc
 from typing import cast
 from urllib.request import Request, urlopen
 
@@ -38,6 +40,10 @@ def dispatch(alerts: list[Alert], config: WatchdogConfig) -> None:
     # Slack
     if config.alert_slack_webhook:
         _send_slack(alerts, config)
+
+    # MS Teams
+    if config.alert_teams_webhook:
+        _send_teams(alerts, config)
 
 
 def _log_alerts(alerts: list[Alert]) -> None:
@@ -76,7 +82,8 @@ def _send_email(alerts: list[Alert], config: WatchdogConfig) -> None:
         badge = "🔴" if a.severity == Severity.CRITICAL else "🟡"
         target = f"{a.dag_id}.{a.task_id}" if a.task_id else a.dag_id
         rows.append(
-            f"<tr><td>{badge}</td><td>{a.alert_type.value}</td><td>{target}</td><td>{a.message}</td></tr>"
+            f"<tr><td>{badge}</td><td>{_esc(a.alert_type.value)}</td>"
+            f"<td>{_esc(target)}</td><td>{_esc(a.message)}</td></tr>"
         )
 
     html = f"""\
@@ -123,3 +130,69 @@ def _send_slack(alerts: list[Alert], config: WatchdogConfig) -> None:
         logger.info("Watchdog Slack notification sent")
     except Exception:
         logger.exception("Failed to send watchdog Slack notification")
+
+
+def _send_teams(alerts: list[Alert], config: WatchdogConfig) -> None:
+    """Post alert summary to an MS Teams webhook (Adaptive Card)."""
+    critical = [a for a in alerts if a.severity == Severity.CRITICAL]
+
+    facts = []
+    for a in alerts[:20]:
+        icon = "\U0001f534" if a.severity == Severity.CRITICAL else "\U0001f7e1"
+        target = f"{a.dag_id}.{a.task_id}" if a.task_id else a.dag_id
+        facts.append(
+            {
+                "title": f"{icon} {a.alert_type.value}",
+                "value": f"**{target}**: {a.message}",
+            }
+        )
+
+    if len(alerts) > 20:
+        facts.append(
+            {
+                "title": "",
+                "value": f"_...and {len(alerts) - 20} more_",
+            }
+        )
+
+    # Adaptive Card payload for MS Teams (via Incoming Webhook)
+    payload = json.dumps(
+        {
+            "type": "message",
+            "attachments": [
+                {
+                    "contentType": "application/vnd.microsoft.card.adaptive",
+                    "content": {
+                        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                        "type": "AdaptiveCard",
+                        "version": "1.4",
+                        "body": [
+                            {
+                                "type": "TextBlock",
+                                "size": "Medium",
+                                "weight": "Bolder",
+                                "text": (
+                                    f"Watchdog: {len(alerts)} alert(s) ({len(critical)} critical)"
+                                ),
+                            },
+                            {
+                                "type": "FactSet",
+                                "facts": facts,
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+    ).encode()
+
+    try:
+        req = Request(
+            cast(str, config.alert_teams_webhook),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        urlopen(req, timeout=10)  # noqa: S310
+        logger.info("Watchdog MS Teams notification sent")
+    except Exception:
+        logger.exception("Failed to send watchdog MS Teams notification")

@@ -222,6 +222,31 @@ def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -
         from airflow.models import Variable
 
         from airflow_watchdog.config import _VARIABLE_KEY
+        from airflow_watchdog.detectors import AlertType
+
+        valid_names = {e.value for e in AlertType}
+
+        # Validate disable_detectors entries
+        for name in disable_detectors:
+            if name not in valid_names:
+                return {
+                    "success": False,
+                    "error": f"Unknown detector: {name}",
+                }
+
+        # Validate dag_overrides structure
+        for dag_id, cfg in dag_overrides.items():
+            if not isinstance(cfg, dict):
+                return {
+                    "success": False,
+                    "error": f"Invalid override for {dag_id}",
+                }
+            for name in cfg.get("disable_detectors", []):
+                if name not in valid_names:
+                    return {
+                        "success": False,
+                        "error": f"Unknown detector in {dag_id}: {name}",
+                    }
 
         raw = Variable.get(_VARIABLE_KEY, default_var="{}")
         current = json.loads(raw) if isinstance(raw, str) else raw
