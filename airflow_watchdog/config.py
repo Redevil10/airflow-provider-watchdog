@@ -49,8 +49,14 @@ _DEFAULTS: dict[str, Any] = {
     "deadline_multiplier": 2.0,
     # Stuck: flag if a running task exceeds multiplier × historical max
     "stuck_multiplier": 2.0,
+    # Schedule anomaly: IQR multiplier for start/end time-of-day fences
+    "schedule_iqr_multiplier": 1.5,
     # DAGs to skip (always excludes the watchdog DAG itself)
     "exclude_dags": ["airflow_watchdog_monitor"],
+    # Detectors to disable globally (by AlertType value)
+    "disable_detectors": [],
+    # Per-DAG overrides: {"dag_id": {"disable_detectors": [...], ...}}
+    "dag_overrides": {},
     # Alerting
     "alert_emails": [],
     "alert_slack_webhook": None,
@@ -69,9 +75,25 @@ class WatchdogConfig:
     failure_spike_ratio: float = _DEFAULTS["failure_spike_ratio"]
     deadline_multiplier: float = _DEFAULTS["deadline_multiplier"]
     stuck_multiplier: float = _DEFAULTS["stuck_multiplier"]
+    schedule_iqr_multiplier: float = _DEFAULTS["schedule_iqr_multiplier"]
     exclude_dags: list[str] = field(default_factory=lambda: list(_DEFAULTS["exclude_dags"]))
+    disable_detectors: list[str] = field(
+        default_factory=lambda: list(_DEFAULTS["disable_detectors"])
+    )
+    dag_overrides: dict[str, dict] = field(
+        default_factory=lambda: dict(_DEFAULTS["dag_overrides"])
+    )
     alert_emails: list[str] = field(default_factory=lambda: list(_DEFAULTS["alert_emails"]))
     alert_slack_webhook: str | None = _DEFAULTS["alert_slack_webhook"]
+
+    def is_detector_enabled(self, detector_name: str, dag_id: str) -> bool:
+        """Check if a detector is enabled for a given DAG."""
+        if detector_name in self.disable_detectors:
+            return False
+        dag_cfg = self.dag_overrides.get(dag_id, {})
+        if detector_name in dag_cfg.get("disable_detectors", []):
+            return False
+        return True
 
 
 def load_config() -> WatchdogConfig:

@@ -22,6 +22,7 @@ class AlertType(str, Enum):
     FAILURE_SPIKE = "failure_spike"
     MISSED_DEADLINE = "missed_deadline"
     STUCK_TASK = "stuck_task"
+    SCHEDULE_ANOMALY = "schedule_anomaly"
 
 
 @dataclass

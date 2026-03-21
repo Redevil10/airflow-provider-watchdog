@@ -61,3 +61,27 @@ def test_fallback_on_import_error():
 
     assert isinstance(config, WatchdogConfig)
     assert config.lookback_runs == 20
+
+
+def test_is_detector_enabled_default():
+    """All detectors enabled by default."""
+    config = WatchdogConfig()
+    assert config.is_detector_enabled("runtime_anomaly", "any_dag")
+    assert config.is_detector_enabled("schedule_anomaly", "any_dag")
+
+
+def test_is_detector_disabled_globally():
+    """Globally disabled detectors are blocked for all DAGs."""
+    config = WatchdogConfig(disable_detectors=["schedule_anomaly"])
+    assert not config.is_detector_enabled("schedule_anomaly", "any_dag")
+    assert config.is_detector_enabled("runtime_anomaly", "any_dag")
+
+
+def test_is_detector_disabled_per_dag():
+    """Per-DAG overrides disable detectors only for specific DAGs."""
+    config = WatchdogConfig(
+        dag_overrides={"event_dag": {"disable_detectors": ["schedule_anomaly"]}}
+    )
+    assert not config.is_detector_enabled("schedule_anomaly", "event_dag")
+    assert config.is_detector_enabled("schedule_anomaly", "other_dag")
+    assert config.is_detector_enabled("runtime_anomaly", "event_dag")

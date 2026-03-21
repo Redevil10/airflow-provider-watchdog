@@ -476,3 +476,121 @@ class TestStuckTaskDetector:
         # Should not raise ZeroDivisionError
         alerts = detect(session, _default_config())
         assert len(alerts) == 1
+
+
+# ── Schedule anomaly detector ────────────────────────────────────────────────
+
+
+class TestScheduleAnomalyDetector:
+    def _make_row(self, dag_id, task_id, hour, minute, rn, end_hour=None, end_minute=None):
+        """Create a row with start/end datetimes at the given times."""
+        base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        start = base.replace(hour=hour, minute=minute)
+        if end_hour is not None or end_minute is not None:
+            end = start.replace(
+                hour=end_hour if end_hour is not None else hour,
+                minute=end_minute if end_minute is not None else minute,
+            )
+        else:
+            end = start + timedelta(minutes=10)
+        return SimpleNamespace(
+            dag_id=dag_id, task_id=task_id, start_date=start, end_date=end, rn=rn
+        )
+
+    def test_late_start_detected(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        # 7 runs normally starting at 02:00, latest (rn=1) starts at 10:00
+        rows = [self._make_row("dag1", "task1", 10, 0, 1)]  # anomaly
+        rows += [
+            self._make_row("dag1", "task1", 2, i, rn)
+            for rn, i in enumerate([0, 5, 10, 15, 20, 25, 30], start=2)
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+
+        assert len(alerts) >= 1
+        start_alerts = [a for a in alerts if a.details.get("type") == "start"]
+        assert len(start_alerts) == 1
+        assert start_alerts[0].alert_type == AlertType.SCHEDULE_ANOMALY
+        assert "later" in start_alerts[0].message
+
+    def test_early_start_detected(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        # Normally starts at 14:00, latest starts at 06:00
+        rows = [self._make_row("dag1", "task1", 6, 0, 1)]
+        rows += [
+            self._make_row("dag1", "task1", 14, i, rn)
+            for rn, i in enumerate([0, 5, 10, 15, 20, 25, 30], start=2)
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+
+        start_alerts = [a for a in alerts if a.details.get("type") == "start"]
+        assert len(start_alerts) == 1
+        assert "earlier" in start_alerts[0].message
+
+    def test_normal_times_no_alert(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        # All times cluster around 02:00-02:30
+        rows = [
+            self._make_row("dag1", "task1", 2, i, rn)
+            for rn, i in enumerate([15, 0, 5, 10, 20, 25, 30], start=1)
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+        assert alerts == []
+
+    def test_midnight_wraparound(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        # Times around midnight: 23:50, 23:55, 00:00, 00:05, 00:10, 00:15, 00:20
+        # Latest at 06:00 should be flagged
+        rows = [self._make_row("dag1", "task1", 6, 0, 1)]  # anomaly
+        rows += [
+            self._make_row("dag1", "task1", 23, 50, 2),
+            self._make_row("dag1", "task1", 23, 55, 3),
+            self._make_row("dag1", "task1", 0, 0, 4),
+            self._make_row("dag1", "task1", 0, 5, 5),
+            self._make_row("dag1", "task1", 0, 10, 6),
+            self._make_row("dag1", "task1", 0, 15, 7),
+            self._make_row("dag1", "task1", 0, 20, 8),
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+
+        start_alerts = [a for a in alerts if a.details.get("type") == "start"]
+        assert len(start_alerts) >= 1
+
+    def test_fewer_than_5_samples_skipped(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        rows = [self._make_row("dag1", "task1", 10, 0, rn) for rn in range(1, 4)]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+        assert alerts == []
+
+    def test_query_failure_returns_empty(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        session = MagicMock()
+        session.execute.side_effect = Exception("DB error")
+        alerts = detect(session, _default_config())
+        assert alerts == []
+
+    def test_end_time_anomaly_detected(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        # Normal end at 03:00, latest ends at 12:00
+        rows = [self._make_row("dag1", "task1", 2, 0, 1, end_hour=12, end_minute=0)]
+        rows += [
+            self._make_row("dag1", "task1", 2, i, rn, end_hour=3, end_minute=i)
+            for rn, i in enumerate([0, 5, 10, 15, 20, 25, 30], start=2)
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+
+        end_alerts = [a for a in alerts if a.details.get("type") == "end"]
+        assert len(end_alerts) == 1

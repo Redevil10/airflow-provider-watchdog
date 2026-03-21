@@ -18,6 +18,7 @@ No Prometheus. No Grafana. No Datadog. Just `pip install` and go.
 | **Failure spike** | Sudden increase in DAG failure rate | Compares recent failure rate vs historical baseline |
 | **Missed deadline** | DAG runs taking too long | Flags running DAGs exceeding N× their median duration |
 | **Stuck task** | Zombie or hung tasks | Flags tasks in `running` state beyond N× their historical max |
+| **Schedule anomaly** | Tasks starting or ending at unusual times | IQR-based outlier detection on time-of-day (handles midnight wraparound) |
 
 ## Requirements
 
@@ -50,7 +51,14 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
     "failure_spike_ratio": 2.0,
     "deadline_multiplier": 2.0,
     "stuck_multiplier": 2.0,
+    "schedule_iqr_multiplier": 1.5,
     "exclude_dags": [],
+    "disable_detectors": [],
+    "dag_overrides": {
+        "my_dag": {
+            "disable_detectors": ["schedule_anomaly"]
+        }
+    },
     "alert_emails": ["team@example.com"],
     "alert_slack_webhook": "https://hooks.slack.com/services/..."
 }
@@ -68,7 +76,10 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 | `failure_spike_ratio` | `2.0` | Alert when recent rate exceeds this × baseline rate |
 | `deadline_multiplier` | `2.0` | Alert when DAG run exceeds this × median duration |
 | `stuck_multiplier` | `2.0` | Alert when task exceeds this × historical max duration |
+| `schedule_iqr_multiplier` | `1.5` | IQR multiplier for start/end time-of-day fences |
 | `exclude_dags` | `[]` | DAG IDs to skip (`airflow_watchdog_monitor` is always excluded) |
+| `disable_detectors` | `[]` | Detector names to disable globally (e.g. `["schedule_anomaly"]`) |
+| `dag_overrides` | `{}` | Per-DAG overrides: `{"dag_id": {"disable_detectors": [...]}}` |
 | `alert_emails` | `[]` | Email addresses for alert notifications |
 | `alert_slack_webhook` | `null` | Slack incoming webhook URL |
 
@@ -80,12 +91,12 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 ┌─────────────────────────────────────────────────┐
 │  airflow_watchdog_monitor DAG                   │
 │                                                 │
-│  ┌─────────┐ ┌──────────┐ ┌──────────┐  ┌─────┐ │
-│  │ Runtime │ │ Failures │ │Deadlines │  │Stuck│ │
-│  │Detector │ │ Detector │ │ Detector │  │Det. │ │
-│  └────┬────┘ └────┬─────┘ └────┬─────┘  └──┬──┘ │
-│       │           │            │           │    │
-│       └───────────┴────────────┴───────────┘    │
+│  ┌─────────┐ ┌────────┐ ┌────────┐ ┌─────┐ ┌────────┐ │
+│  │ Runtime │ │Failure │ │Deadline│ │Stuck│ │Schedule│ │
+│  │Detector │ │Detector│ │Detector│ │Det. │ │Detector│ │
+│  └────┬────┘ └───┬────┘ └───┬────┘ └──┬──┘ └───┬────┘ │
+│       │          │          │         │        │      │
+│       └──────────┴──────────┴─────────┴────────┘      │
 │                       │                         │
 │              ┌────────▼────────┐                │
 │              │    Alerting     │                │
@@ -113,6 +124,8 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 **Missed deadline:** Checks currently-running DAG runs and compares their elapsed time against `2× median` historical duration. Catches DAGs that are silently hanging.
 
 **Stuck task:** Checks currently-running task instances against `2× historical max` duration for that specific task. Catches zombie tasks, hung queries, and unresponsive external calls.
+
+**Schedule anomaly (IQR):** For each `(dag_id, task_id)`, converts start and end times to minutes-since-midnight and computes IQR fences. Flags tasks that started or ended at an unusual time-of-day. Handles midnight wraparound (e.g. tasks normally running between 23:30–00:30).
 
 ## Dashboard
 
@@ -150,7 +163,7 @@ uv run pytest
 
 - [ ] Historical alert storage (dedicated table) for trend analysis
 - [ ] Sparkline charts in the dashboard showing duration trends
-- [ ] Per-DAG threshold overrides via a separate Variable or JSON config
+- [x] Per-DAG detector enable/disable via `dag_overrides` config
 - [x] Multi-database support (PostgreSQL, MySQL, SQLite)
 - [x] GitHub Actions CI (lint, test, publish)
 - [ ] Contribution to the [Airflow ecosystem page](https://airflow.apache.org/ecosystem/)
