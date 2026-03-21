@@ -6,6 +6,7 @@ Sends watchdog alerts through Airflow's native channels:
 - Email via ``airflow.utils.email.send_email`` (if configured)
 - Slack webhook (if configured)
 - MS Teams webhook via Adaptive Card (if configured)
+- Discord webhook (if configured)
 
 No external dependencies — uses only what Airflow already provides.
 """
@@ -44,6 +45,10 @@ def dispatch(alerts: list[Alert], config: WatchdogConfig) -> None:
     # MS Teams
     if config.alert_teams_webhook:
         _send_teams(alerts, config)
+
+    # Discord
+    if config.alert_discord_webhook:
+        _send_discord(alerts, config)
 
 
 def _log_alerts(alerts: list[Alert]) -> None:
@@ -196,3 +201,32 @@ def _send_teams(alerts: list[Alert], config: WatchdogConfig) -> None:
         logger.info("Watchdog MS Teams notification sent")
     except Exception:
         logger.exception("Failed to send watchdog MS Teams notification")
+
+
+def _send_discord(alerts: list[Alert], config: WatchdogConfig) -> None:
+    """Post alert summary to a Discord webhook."""
+    critical = [a for a in alerts if a.severity == Severity.CRITICAL]
+
+    lines = [f"**Watchdog**: {len(alerts)} alert(s) ({len(critical)} critical)"]
+    for a in alerts[:20]:
+        icon = "\U0001f534" if a.severity == Severity.CRITICAL else "\U0001f7e1"
+        target = f"`{a.dag_id}.{a.task_id}`" if a.task_id else f"`{a.dag_id}`"
+        lines.append(f"{icon} **{a.alert_type.value}** {target}: {a.message}")
+
+    if len(alerts) > 20:
+        lines.append(f"*...and {len(alerts) - 20} more*")
+
+    # Discord has a 2000 char limit per message
+    text = "\n".join(lines)[:2000]
+    payload = json.dumps({"content": text}).encode()
+
+    try:
+        req = Request(
+            cast(str, config.alert_discord_webhook),
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        urlopen(req, timeout=10)  # noqa: S310
+        logger.info("Watchdog Discord notification sent")
+    except Exception:
+        logger.exception("Failed to send watchdog Discord notification")
