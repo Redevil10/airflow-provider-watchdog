@@ -260,7 +260,7 @@
 <body>
     <div class="header">
         <h1><span>&#9881;</span> Watchdog Configuration</h1>
-        <a class="nav-link" href="/watchdog/">&larr; Back to Dashboard</a>
+        <a class="nav-link" href="./">&larr; Back to Dashboard</a>
     </div>
 
     <div class="table-container">
@@ -427,7 +427,7 @@
 
             try {
                 const payload = getStatePayload();
-                const resp = await fetch("/watchdog/api/config", {
+                const resp = await fetch("api/config", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
