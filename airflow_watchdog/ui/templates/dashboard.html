@@ -227,7 +227,7 @@
     <div class="header">
         <h1><span>🐕</span> Watchdog Dashboard</h1>
         <div style="display: flex; align-items: center; gap: 16px;">
-            <a href="/watchdog/config" style="color: var(--blue); text-decoration: none; font-size: 0.9rem;">&#9881; Configuration</a>
+            <a href="config" style="color: var(--blue); text-decoration: none; font-size: 0.9rem;">&#9881; Configuration</a>
             <span class="refresh-info">Auto-refreshes every 60s</span>
         </div>
     </div>
@@ -315,7 +315,7 @@
                             </span>
                         </td>
                         <td>
-                            <a class="dag-link" href="/dags/${encodeURIComponent(d.dag_id)}">${escapeHtml(d.dag_id)}</a>
+                            <a class="dag-link" href="${DATA.base_url}/dags/${encodeURIComponent(d.dag_id)}">${escapeHtml(d.dag_id)}</a>
                             ${d.is_paused ? ' <span style="color: var(--text-muted)">(paused)</span>' : ''}
                         </td>
                         <td>
@@ -368,7 +368,7 @@
         // Auto-refresh every 60s via JSON API
         setInterval(async () => {
             try {
-                const resp = await fetch("/watchdog/api/data");
+                const resp = await fetch("api/data");
                 const fresh = await resp.json();
                 renderSummary(fresh.summary);
                 renderTable(fresh.dags);

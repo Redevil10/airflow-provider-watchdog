@@ -34,7 +34,15 @@ def _get_dashboard_data() -> dict:
         "dags": [],
         "alerts": [],
         "summary": {"total_dags": 0, "healthy": 0, "warning": 0, "critical": 0},
+        "base_url": "",
     }
+
+    try:
+        from airflow.configuration import conf
+
+        data["base_url"] = conf.get("api", "base_url", fallback="").rstrip("/")
+    except Exception:
+        pass
 
     try:
         from sqlalchemy import text
