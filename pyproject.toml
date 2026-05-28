@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "airflow-provider-watchdog"
-version = "0.3.1"
+version = "0.4.0"
 description = "A lightweight, zero-dependency Airflow provider that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, and stuck tasks."
 readme = "README.md"
 license = "Apache-2.0"
@@ -30,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: System :: Monitoring",
 ]
 dependencies = [
