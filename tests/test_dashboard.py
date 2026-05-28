@@ -3,11 +3,33 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+
+@contextmanager
+def _auth_disabled():
+    """Bypass Airflow auth dependencies for endpoint tests.
+
+    The TestClient drives the standalone FastAPI app directly, so there is no
+    Airflow API server (and no auth manager) to satisfy the real dependencies.
+    """
+    from airflow_watchdog.ui.app import (
+        _require_variable_write,
+        _require_view_access,
+        watchdog_app,
+    )
+
+    watchdog_app.dependency_overrides[_require_view_access] = lambda: None
+    watchdog_app.dependency_overrides[_require_variable_write] = lambda: None
+    try:
+        yield
+    finally:
+        watchdog_app.dependency_overrides.clear()
 
 
 @pytest.fixture()
@@ -23,7 +45,8 @@ def _mock_airflow():
             "airflow.settings": mock_settings,
         },
     ):
-        yield mock_session_cls
+        with _auth_disabled():
+            yield mock_session_cls
 
 
 def _make_session(dag_rows, run_rows, alert_row=None):
@@ -241,7 +264,8 @@ def _mock_airflow_with_config():
             "airflow.models": mock_models,
         },
     ):
-        yield mock_session_cls, mock_variable
+        with _auth_disabled():
+            yield mock_session_cls, mock_variable
 
 
 class TestConfigEndpoints:
@@ -329,3 +353,94 @@ class TestConfigEndpoints:
         saved_json = mock_variable.set.call_args[0][1]
         saved = json.loads(saved_json)
         assert "etl" not in saved.get("dag_overrides", {})
+
+
+# ── Authentication tests ───────────────────────────────────────────────────────
+
+
+@contextmanager
+def _patch_auth_modules(authorized: bool):
+    """Install fake Airflow auth submodules so the auth dependencies resolve.
+
+    *authorized* controls whether the fake auth manager grants access. The
+    resolver treats a missing ``_token`` cookie as unauthenticated (401).
+    """
+    from fastapi import HTTPException
+
+    auth_manager = MagicMock()
+    auth_manager.is_authorized_view.return_value = authorized
+    auth_manager.is_authorized_variable.return_value = authorized
+
+    async def _resolve(token_str):
+        if not token_str:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        return MagicMock(name="user")
+
+    app_mod = MagicMock()
+    app_mod.get_auth_manager.return_value = auth_manager
+
+    security_mod = MagicMock()
+    security_mod.resolve_user_from_token = _resolve
+
+    base_mod = MagicMock()
+    base_mod.COOKIE_NAME_JWT_TOKEN = "_token"
+
+    modules = {
+        "airflow.api_fastapi.app": app_mod,
+        "airflow.api_fastapi.core_api.security": security_mod,
+        "airflow.api_fastapi.auth.managers.base_auth_manager": base_mod,
+        "airflow.api_fastapi.auth.managers.models.resource_details": MagicMock(),
+    }
+    with patch.dict("sys.modules", modules):
+        yield
+
+
+class TestAuth:
+    @pytest.mark.usefixtures("_mock_airflow")
+    def test_view_endpoint_rejects_unauthenticated(self, _mock_airflow):
+        _mock_airflow.return_value = _make_session([], [], None)
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        # Drop the bypass installed by the fixture so the real dependency runs.
+        watchdog_app.dependency_overrides.clear()
+
+        client = TestClient(watchdog_app)
+        with _patch_auth_modules(authorized=True):
+            resp = client.get("/api/data")
+        assert resp.status_code == 401
+
+    @pytest.mark.usefixtures("_mock_airflow")
+    def test_view_endpoint_rejects_unauthorized(self, _mock_airflow):
+        _mock_airflow.return_value = _make_session([], [], None)
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        watchdog_app.dependency_overrides.clear()
+
+        client = TestClient(watchdog_app)
+        client.cookies.set("_token", "abc")
+        with _patch_auth_modules(authorized=False):
+            resp = client.get("/api/data")
+        assert resp.status_code == 403
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_config_write_rejects_unauthorized(self, _mock_airflow_with_config):
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        watchdog_app.dependency_overrides.clear()
+
+        client = TestClient(watchdog_app)
+        client.cookies.set("_token", "abc")
+        with _patch_auth_modules(authorized=False):
+            resp = client.post(
+                "/api/config",
+                json={"disable_detectors": [], "dag_overrides": {}},
+            )
+        assert resp.status_code == 403
