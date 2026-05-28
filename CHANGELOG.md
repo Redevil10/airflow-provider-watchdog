@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Dashboard and config endpoints now require an authenticated Airflow user. Reads require website (view) access; saving config requires permission to edit Airflow Variables. Previously these plugin endpoints — including the config-write endpoint that mutates the `watchdog_config` Variable — were reachable without authentication.
+
+### Fixed
+
+- Failure-spike baseline now **excludes** the recent window (`rn > window`), so a fresh wave of failures no longer dilutes the baseline it's compared against
+- Naive metadata timestamps are now interpreted as UTC (the value Airflow actually stores) instead of `airflow.settings.TIMEZONE`, which produced incorrect elapsed times for deadline/stuck detection on non-UTC deployments
+- Dashboard DAG-link `base_url` is now passed through `encodeURI` for consistent escaping
+
+### Changed
+
+- Alerts serialized into the dashboard XCom are capped (most-severe first) to keep the payload bounded; `total_alerts`/`by_type` counts still reflect every alert
+
 ## [0.3.1] - 2026-03-25
 
 ### Fixed

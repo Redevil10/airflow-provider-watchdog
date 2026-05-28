@@ -123,7 +123,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 
 **Runtime anomaly (IQR):** For each `(dag_id, task_id)`, the detector computes Q1, Q3, and IQR from the last N successful runs. If the most recent duration falls outside `[Q1 - 1.5×IQR, Q3 + 1.5×IQR]`, it's flagged. This is more robust than z-score because outliers don't skew the baseline.
 
-**Failure spike:** Compares the failure rate in the last 10 runs against the rate in the last 50 runs. If the recent rate exceeds `2× baseline`, it fires. Also catches DAGs that suddenly start failing when they historically never did.
+**Failure spike:** Compares the failure rate in the last 10 runs against the rate over the *preceding* baseline runs (the baseline excludes the recent window, so a fresh spike doesn't dilute its own reference point). If the recent rate exceeds `2× baseline`, it fires. Also catches DAGs that suddenly start failing when they historically never did.
 
 **Missed deadline:** Checks currently-running DAG runs and compares their elapsed time against `2× median` historical duration. Catches DAGs that are silently hanging.
 
@@ -141,6 +141,10 @@ The dashboard is available at `/watchdog/` in the Airflow webserver. It shows:
 - Auto-refreshes every 60 seconds
 
 Access it via **Browse → Watchdog** in the Airflow UI navbar.
+
+The dashboard and its API require an authenticated Airflow user. Reading the
+dashboard needs website (view) access; saving configuration changes requires
+permission to edit Airflow Variables — enforced through Airflow's auth manager.
 
 ## Alerting
 

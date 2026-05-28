@@ -15,12 +15,62 @@ import json
 import logging
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 logger = logging.getLogger(__name__)
 
 watchdog_app = FastAPI()
+
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+# Plugin-registered FastAPI apps are mounted on the Airflow API server but are
+# NOT automatically protected by Airflow's auth. We enforce it explicitly so the
+# dashboard cannot be read — and, critically, the config cannot be modified — by
+# unauthenticated callers. The work is delegated to Airflow's auth manager.
+
+
+async def _resolve_user(request: Request):
+    """Resolve the Airflow user from the request, raising 401 if unauthenticated."""
+    # A middleware may have already attached the user.
+    user = getattr(request.state, "user", None)
+    if user:
+        return user
+
+    from airflow.api_fastapi.auth.managers.base_auth_manager import COOKIE_NAME_JWT_TOKEN
+    from airflow.api_fastapi.core_api.security import resolve_user_from_token
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[len("bearer ") :]
+    else:
+        token = request.cookies.get(COOKIE_NAME_JWT_TOKEN)
+
+    return await resolve_user_from_token(token)
+
+
+async def _require_view_access(request: Request) -> None:
+    """Dependency: require an authenticated user with website (read) access."""
+    from airflow.api_fastapi.app import get_auth_manager
+    from airflow.api_fastapi.auth.managers.models.resource_details import AccessView
+
+    user = await _resolve_user(request)
+    if not get_auth_manager().is_authorized_view(access_view=AccessView.WEBSITE, user=user):
+        raise HTTPException(status_code=403, detail="Not authorized to view Watchdog.")
+
+
+async def _require_variable_write(request: Request) -> None:
+    """Dependency: require a user authorized to edit the watchdog_config Variable."""
+    from airflow.api_fastapi.app import get_auth_manager
+    from airflow.api_fastapi.auth.managers.models.resource_details import VariableDetails
+
+    from airflow_watchdog.config import _VARIABLE_KEY
+
+    user = await _resolve_user(request)
+    if not get_auth_manager().is_authorized_variable(
+        method="PUT", details=VariableDetails(key=_VARIABLE_KEY), user=user
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized to edit Watchdog config.")
 
 
 def _get_dashboard_data() -> dict:
@@ -160,7 +210,7 @@ def _get_dashboard_data() -> dict:
     return data
 
 
-@watchdog_app.get("/")
+@watchdog_app.get("/", dependencies=[Depends(_require_view_access)])
 async def dashboard() -> HTMLResponse:
     """Serve the watchdog dashboard."""
     data = _get_dashboard_data()
@@ -178,7 +228,7 @@ async def dashboard() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@watchdog_app.get("/api/data")
+@watchdog_app.get("/api/data", dependencies=[Depends(_require_view_access)])
 async def api_data() -> JSONResponse:
     """JSON API endpoint for dashboard data."""
     data = _get_dashboard_data()
@@ -273,7 +323,7 @@ def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -
         return {"success": False, "error": "Failed to save configuration."}
 
 
-@watchdog_app.get("/config")
+@watchdog_app.get("/config", dependencies=[Depends(_require_view_access)])
 async def config_page() -> HTMLResponse:
     """Serve the config UI page."""
     data = _get_config_data()
@@ -289,14 +339,14 @@ async def config_page() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@watchdog_app.get("/api/config")
+@watchdog_app.get("/api/config", dependencies=[Depends(_require_view_access)])
 async def api_config() -> JSONResponse:
     """JSON API endpoint for config data."""
     data = _get_config_data()
     return JSONResponse(content=data)
 
 
-@watchdog_app.post("/api/config")
+@watchdog_app.post("/api/config", dependencies=[Depends(_require_variable_write)])
 async def api_config_save(request: Request) -> JSONResponse:
     """Save config changes."""
     body = await request.json()

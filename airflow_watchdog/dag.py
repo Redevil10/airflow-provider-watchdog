@@ -18,6 +18,10 @@ from airflow.sdk import DAG
 
 logger = logging.getLogger(__name__)
 
+# Cap the number of alerts serialized into XCom so a pathological run can't
+# produce an oversized payload. The most severe alerts are kept.
+_MAX_XCOM_ALERTS = 200
+
 
 def _run_watchdog(**context) -> str:
     """Execute all detectors and dispatch alerts."""
@@ -47,6 +51,8 @@ def _run_watchdog(**context) -> str:
 
     try:
         for name, detect_fn in detectors:
+            # Skip globally-disabled detectors up front to avoid the DB work.
+            # Per-DAG overrides are applied to the produced alerts below.
             if name in config.disable_detectors:
                 logger.info("Detector '%s' is globally disabled; skipping", name)
                 continue
@@ -64,7 +70,8 @@ def _run_watchdog(**context) -> str:
 
     dispatch(all_alerts, config)
 
-    # Push summary to XCom for the dashboard
+    # Push summary to XCom for the dashboard. by_type counts reflect every
+    # alert; the serialized alert list is capped to keep the XCom bounded.
     summary = {
         "total_alerts": len(all_alerts),
         "by_type": {},
@@ -73,6 +80,11 @@ def _run_watchdog(**context) -> str:
     for alert in all_alerts:
         t = alert.alert_type.value
         summary["by_type"][t] = summary["by_type"].get(t, 0) + 1
+
+    # Keep the most severe alerts when capping (Severity values sort
+    # "critical" before "warning").
+    ranked = sorted(all_alerts, key=lambda a: a.severity.value)
+    for alert in ranked[:_MAX_XCOM_ALERTS]:
         summary["alerts"].append(
             {
                 "type": alert.alert_type.value,

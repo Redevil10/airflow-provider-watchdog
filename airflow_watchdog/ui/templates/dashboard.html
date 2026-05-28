@@ -315,7 +315,7 @@
                             </span>
                         </td>
                         <td>
-                            <a class="dag-link" href="${DATA.base_url}/dags/${encodeURIComponent(d.dag_id)}">${escapeHtml(d.dag_id)}</a>
+                            <a class="dag-link" href="${encodeURI(DATA.base_url)}/dags/${encodeURIComponent(d.dag_id)}">${escapeHtml(d.dag_id)}</a>
                             ${d.is_paused ? ' <span style="color: var(--text-muted)">(paused)</span>' : ''}
                         </td>
                         <td>
