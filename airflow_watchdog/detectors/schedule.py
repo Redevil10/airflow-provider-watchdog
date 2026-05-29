@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from airflow_watchdog.config import WatchdogConfig
 from airflow_watchdog.detectors import Alert, AlertType, Severity
-from airflow_watchdog.detectors._stats import quartiles
+from airflow_watchdog.detectors._stats import as_datetime, quartiles
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ _MINUTES_IN_DAY = 1440
 
 def _to_minutes(dt) -> float:
     """Convert a datetime to minutes since midnight (UTC)."""
+    dt = as_datetime(dt)
     return dt.hour * 60 + dt.minute + dt.second / 60
 
 

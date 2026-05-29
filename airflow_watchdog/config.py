@@ -15,9 +15,14 @@ Example Variable value (set via UI or CLI):
         "failure_spike_ratio": 2.0,
         "deadline_multiplier": 2.0,
         "stuck_multiplier": 2.0,
+        "schedule_iqr_multiplier": 1.5,
         "exclude_dags": ["airflow_watchdog_monitor"],
+        "disable_detectors": [],
+        "dag_overrides": {"my_dag": {"disable_detectors": ["schedule_anomaly"]}},
         "alert_emails": [],
-        "alert_slack_webhook": null
+        "alert_slack_webhook": null,
+        "alert_teams_webhook": null,
+        "alert_discord_webhook": null
     }
 """
 

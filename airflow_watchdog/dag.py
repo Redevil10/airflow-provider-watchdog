@@ -9,7 +9,6 @@ Configuration via Airflow Variable ``watchdog_config`` (see config.py).
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import timedelta
 
@@ -17,6 +16,10 @@ from airflow.providers.standard.operators.python import PythonOperator
 from airflow.sdk import DAG
 
 logger = logging.getLogger(__name__)
+
+# Cap the number of alerts serialized into XCom so a pathological run can't
+# produce an oversized payload. The most severe alerts are kept.
+_MAX_XCOM_ALERTS = 200
 
 
 def _run_watchdog(**context) -> str:
@@ -33,6 +36,7 @@ def _run_watchdog(**context) -> str:
     from airflow_watchdog.detectors.stuck import detect as detect_stuck
 
     config = load_config()
+    assert Session is not None  # configured by Airflow at runtime
     session = Session()
 
     all_alerts: list[Alert] = []
@@ -47,6 +51,8 @@ def _run_watchdog(**context) -> str:
 
     try:
         for name, detect_fn in detectors:
+            # Skip globally-disabled detectors up front to avoid the DB work.
+            # Per-DAG overrides are applied to the produced alerts below.
             if name in config.disable_detectors:
                 logger.info("Detector '%s' is globally disabled; skipping", name)
                 continue
@@ -64,7 +70,8 @@ def _run_watchdog(**context) -> str:
 
     dispatch(all_alerts, config)
 
-    # Push summary to XCom for the dashboard
+    # Push summary to XCom for the dashboard. by_type counts reflect every
+    # alert; the serialized alert list is capped to keep the XCom bounded.
     summary = {
         "total_alerts": len(all_alerts),
         "by_type": {},
@@ -73,6 +80,11 @@ def _run_watchdog(**context) -> str:
     for alert in all_alerts:
         t = alert.alert_type.value
         summary["by_type"][t] = summary["by_type"].get(t, 0) + 1
+
+    # Keep the most severe alerts when capping (Severity values sort
+    # "critical" before "warning").
+    ranked = sorted(all_alerts, key=lambda a: a.severity.value)
+    for alert in ranked[:_MAX_XCOM_ALERTS]:
         summary["alerts"].append(
             {
                 "type": alert.alert_type.value,
@@ -85,7 +97,9 @@ def _run_watchdog(**context) -> str:
             }
         )
 
-    context["ti"].xcom_push(key="watchdog_results", value=json.dumps(summary))
+    # Push the dict directly — XCom serializes it to JSON. Passing a pre-dumped
+    # string would be double-encoded and the dashboard could not parse it back.
+    context["ti"].xcom_push(key="watchdog_results", value=summary)
 
     status = f"Watchdog complete: {len(all_alerts)} alert(s)"
     logger.info(status)

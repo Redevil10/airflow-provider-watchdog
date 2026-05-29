@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from airflow_watchdog.config import WatchdogConfig
 from airflow_watchdog.detectors import Alert, AlertType, Severity
-from airflow_watchdog.detectors._stats import ensure_tz, median
+from airflow_watchdog.detectors._stats import as_datetime, median
 from airflow_watchdog.detectors._stats import fmt_duration as _fmt
 
 logger = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ def detect(session: Session, config: WatchdogConfig) -> list[Alert]:
     # Compute historical durations per dag_id
     durations_by_dag: dict[str, list[float]] = defaultdict(list)
     for row in hist_rows:
-        secs = (row.end_date - row.start_date).total_seconds()
+        secs = (as_datetime(row.end_date) - as_datetime(row.start_date)).total_seconds()
         durations_by_dag[row.dag_id].append(secs)
 
     # Compute stats per dag_id
@@ -104,7 +104,7 @@ def detect(session: Session, config: WatchdogConfig) -> list[Alert]:
             continue
 
         median_duration, max_duration = stats
-        elapsed_secs = (now - ensure_tz(row.start_date)).total_seconds()
+        elapsed_secs = (now - as_datetime(row.start_date)).total_seconds()
         deadline_secs = config.deadline_multiplier * median_duration
 
         if elapsed_secs <= deadline_secs:

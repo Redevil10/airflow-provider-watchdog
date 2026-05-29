@@ -1,12 +1,14 @@
 """
 Failure spike detector.
 
-Compares the failure rate in a recent window of runs against a longer
-historical baseline.  Fires when the recent rate exceeds
-``failure_spike_ratio * baseline_rate``.
+Compares the failure rate in a recent window of runs against the failure
+rate over the *preceding* historical baseline (the baseline excludes the
+recent window so a fresh spike does not dilute its own reference point).
+Fires when the recent rate exceeds ``failure_spike_ratio * baseline_rate``.
 
-Example: if baseline failure rate is 5 % and recent window shows 15 %,
-with a spike ratio of 2.0, this triggers because 15 % > 2.0 * 5 % = 10 %.
+Example: if the prior baseline failure rate is 5 % and the recent window
+shows 15 %, with a spike ratio of 2.0, this triggers because
+15 % > 2.0 * 5 % = 10 %.
 """
 
 from __future__ import annotations
@@ -52,12 +54,14 @@ recent AS (
     HAVING COUNT(*) >= 3
 ),
 baseline AS (
+    -- Prior history *excluding* the recent window, so a fresh wave of
+    -- failures does not dilute the baseline it is being compared against.
     SELECT
         dag_id,
         COUNT(*) AS total,
         SUM(CASE WHEN state = 'failed' THEN 1 ELSE 0 END) AS failures
     FROM numbered_runs
-    WHERE rn <= :baseline_runs
+    WHERE rn > :window AND rn <= :baseline_runs + :window
     GROUP BY dag_id
     HAVING COUNT(*) >= 10
 )

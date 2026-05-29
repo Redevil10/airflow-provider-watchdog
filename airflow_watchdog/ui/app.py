@@ -15,12 +15,84 @@ import json
 import logging
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 logger = logging.getLogger(__name__)
 
 watchdog_app = FastAPI()
+
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+# Plugin-registered FastAPI apps are mounted on the Airflow API server but are
+# NOT automatically protected by Airflow's auth. We enforce it explicitly so the
+# dashboard cannot be read — and, critically, the config cannot be modified — by
+# unauthenticated callers. The work is delegated to Airflow's auth manager.
+
+
+async def _resolve_user(request: Request):
+    """Resolve the Airflow user from the request, raising 401 if unauthenticated."""
+    # A middleware may have already attached the user.
+    user = getattr(request.state, "user", None)
+    if user:
+        return user
+
+    from airflow.api_fastapi.auth.managers.base_auth_manager import COOKIE_NAME_JWT_TOKEN
+    from airflow.api_fastapi.core_api.security import resolve_user_from_token
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[len("bearer ") :]
+    else:
+        token = request.cookies.get(COOKIE_NAME_JWT_TOKEN)
+
+    return await resolve_user_from_token(token)
+
+
+async def _require_view_access(request: Request) -> None:
+    """Dependency: require an authenticated user with website (read) access."""
+    from airflow.api_fastapi.app import get_auth_manager
+    from airflow.api_fastapi.auth.managers.models.resource_details import AccessView
+
+    user = await _resolve_user(request)
+    if not get_auth_manager().is_authorized_view(access_view=AccessView.WEBSITE, user=user):
+        raise HTTPException(status_code=403, detail="Not authorized to view Watchdog.")
+
+
+async def _require_variable_write(request: Request) -> None:
+    """Dependency: require a user authorized to edit the watchdog_config Variable."""
+    from airflow.api_fastapi.app import get_auth_manager
+    from airflow.api_fastapi.auth.managers.models.resource_details import VariableDetails
+
+    from airflow_watchdog.config import _VARIABLE_KEY
+
+    user = await _resolve_user(request)
+    if not get_auth_manager().is_authorized_variable(
+        method="PUT", details=VariableDetails(key=_VARIABLE_KEY), user=user
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized to edit Watchdog config.")
+
+
+def _decode_xcom_value(value) -> dict | None:
+    """Decode the watchdog_results XCom value across DB backends.
+
+    The XCom ``value`` column is a JSON type, and reading it via raw SQL yields
+    different shapes per backend: PostgreSQL returns a JSON string, SQLite can
+    return a *double*-encoded string (JSON-of-JSON), and a JSONB column may come
+    back already decoded as a dict. Normalize all of these to a dict.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    # Decode up to twice to absorb the SQLite double-encoding case.
+    for _ in range(2):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                return None
+        else:
+            break
+    return value if isinstance(value, dict) else None
 
 
 def _get_dashboard_data() -> dict:
@@ -29,6 +101,9 @@ def _get_dashboard_data() -> dict:
 
     from airflow.settings import Session
 
+    from airflow_watchdog.detectors._stats import as_datetime
+
+    assert Session is not None  # configured by Airflow at runtime
     session = Session()
     data: dict = {
         "dags": [],
@@ -93,10 +168,9 @@ def _get_dashboard_data() -> dict:
         alert_row = session.execute(alerts_query).fetchone()
         alert_data: dict = {}
         if alert_row:
-            try:
-                alert_data = json.loads(alert_row.value)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            parsed = _decode_xcom_value(alert_row.value)
+            if isinstance(parsed, dict):
+                alert_data = parsed
 
         # ── Build alert lookup by dag_id ───────────────────────────────
         alerts_by_dag: dict[str, list[dict]] = {}
@@ -124,14 +198,16 @@ def _get_dashboard_data() -> dict:
 
             data["summary"]["total_dags"] += 1
 
-            # Compute duration in Python (DB-agnostic)
+            # Compute duration in Python (DB-agnostic). Raw SQL returns
+            # timestamps as strings on SQLite, so normalize before arithmetic.
             lr = latest_runs.get(row.dag_id)
             last_run_state = lr.state if lr else None
-            last_run_start = lr.start_date if lr else None
+            last_run_start = None
             duration_secs = None
             if lr and lr.start_date:
-                end = lr.end_date if lr.end_date else now
-                duration_secs = (end - lr.start_date).total_seconds()
+                last_run_start = as_datetime(lr.start_date)
+                end = as_datetime(lr.end_date) if lr.end_date else now
+                duration_secs = (end - last_run_start).total_seconds()
 
             data["dags"].append(
                 {
@@ -160,7 +236,7 @@ def _get_dashboard_data() -> dict:
     return data
 
 
-@watchdog_app.get("/")
+@watchdog_app.get("/", dependencies=[Depends(_require_view_access)])
 async def dashboard() -> HTMLResponse:
     """Serve the watchdog dashboard."""
     data = _get_dashboard_data()
@@ -178,7 +254,7 @@ async def dashboard() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@watchdog_app.get("/api/data")
+@watchdog_app.get("/api/data", dependencies=[Depends(_require_view_access)])
 async def api_data() -> JSONResponse:
     """JSON API endpoint for dashboard data."""
     data = _get_dashboard_data()
@@ -192,6 +268,7 @@ def _get_config_data() -> dict:
     """Load current config and DAG list for the config page."""
     from airflow.settings import Session
 
+    assert Session is not None  # configured by Airflow at runtime
     session = Session()
     data: dict = {"dags": [], "config": {}, "detector_names": []}
 
@@ -273,7 +350,7 @@ def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -
         return {"success": False, "error": "Failed to save configuration."}
 
 
-@watchdog_app.get("/config")
+@watchdog_app.get("/config", dependencies=[Depends(_require_view_access)])
 async def config_page() -> HTMLResponse:
     """Serve the config UI page."""
     data = _get_config_data()
@@ -289,14 +366,14 @@ async def config_page() -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@watchdog_app.get("/api/config")
+@watchdog_app.get("/api/config", dependencies=[Depends(_require_view_access)])
 async def api_config() -> JSONResponse:
     """JSON API endpoint for config data."""
     data = _get_config_data()
     return JSONResponse(content=data)
 
 
-@watchdog_app.post("/api/config")
+@watchdog_app.post("/api/config", dependencies=[Depends(_require_variable_write)])
 async def api_config_save(request: Request) -> JSONResponse:
     """Save config changes."""
     body = await request.json()

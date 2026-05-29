@@ -8,7 +8,7 @@ from statistics import quantiles as _quantiles
 
 
 def quartiles(data: list[float]) -> tuple[float, float, float]:
-    """Return (Q1, median, Q3) for *data* (must have >= 3 elements)."""
+    """Return (Q1, median, Q3) for *data* (must have >= 2 elements)."""
     q1, med, q3 = _quantiles(data, n=4)
     return q1, med, q3
 
@@ -18,26 +18,30 @@ def median(data: list[float]) -> float:
     return _median(data)
 
 
-def _get_airflow_timezone():
-    """Return the Airflow instance timezone, falling back to UTC."""
-    try:
-        from airflow.settings import TIMEZONE
-
-        return TIMEZONE
-    except Exception:
-        return timezone.utc
-
-
 def ensure_tz(dt: datetime) -> datetime:
-    """Return *dt* with timezone info.
+    """Return *dt* as a timezone-aware datetime in UTC.
 
-    If *dt* is naive, attach the Airflow instance timezone
-    (``airflow.settings.TIMEZONE``). Falls back to UTC if the
-    Airflow setting is unavailable.
+    Airflow stores all metadata timestamps in UTC, but some database backends
+    (e.g. SQLite) return naive datetimes. A naive value is therefore interpreted
+    as UTC — *not* the configured ``airflow.settings.TIMEZONE``, which would
+    misread a UTC instant whenever the deployment runs in a non-UTC timezone.
     """
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=_get_airflow_timezone())
+        return dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def as_datetime(value: datetime | str) -> datetime:
+    """Coerce a raw SQL timestamp to a tz-aware UTC datetime.
+
+    Raw ``text()`` queries bypass SQLAlchemy's type handling, so SQLite returns
+    timestamps as ISO strings while PostgreSQL/MySQL return ``datetime`` objects.
+    This normalizes both to a tz-aware UTC datetime so duration arithmetic works
+    on every supported backend.
+    """
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return ensure_tz(value)
 
 
 def fmt_duration(secs: float) -> str:

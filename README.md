@@ -3,7 +3,7 @@
 | Category    | Badges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 |-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **License** | [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| **PyPI**    | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/) [![Downloads](https://img.shields.io/pypi/dm/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/)                                              |
+| **PyPI**    | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/) [![Downloads](https://img.shields.io/pypi/dm/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/)                                              |
 | **CI**      | [![lint](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml) [![tests](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml) [![codecov](https://codecov.io/github/Redevil10/airflow-provider-watchdog/graph/badge.svg)](https://codecov.io/gh/Redevil10/airflow-provider-watchdog) |
 
 A lightweight, zero-dependency Airflow provider that monitors DAG and task health by querying the metadata database.
@@ -24,7 +24,7 @@ No Prometheus. No Grafana. No Datadog. Just `pip install` and go.
 
 - Apache Airflow >= 3.0.0
 - Python >= 3.10
-- Any SQL metadata database supported by Airflow (PostgreSQL, MySQL, SQLite)
+- A metadata database: **PostgreSQL** (recommended, integration-tested) or **SQLite** (tested). MySQL is not tested in CI but should work, as the code is backend-agnostic.
 
 ## Installation
 
@@ -123,7 +123,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 
 **Runtime anomaly (IQR):** For each `(dag_id, task_id)`, the detector computes Q1, Q3, and IQR from the last N successful runs. If the most recent duration falls outside `[Q1 - 1.5×IQR, Q3 + 1.5×IQR]`, it's flagged. This is more robust than z-score because outliers don't skew the baseline.
 
-**Failure spike:** Compares the failure rate in the last 10 runs against the rate in the last 50 runs. If the recent rate exceeds `2× baseline`, it fires. Also catches DAGs that suddenly start failing when they historically never did.
+**Failure spike:** Compares the failure rate in the last 10 runs against the rate over the *preceding* baseline runs (the baseline excludes the recent window, so a fresh spike doesn't dilute its own reference point). If the recent rate exceeds `2× baseline`, it fires. Also catches DAGs that suddenly start failing when they historically never did.
 
 **Missed deadline:** Checks currently-running DAG runs and compares their elapsed time against `2× median` historical duration. Catches DAGs that are silently hanging.
 
@@ -142,6 +142,10 @@ The dashboard is available at `/watchdog/` in the Airflow webserver. It shows:
 
 Access it via **Browse → Watchdog** in the Airflow UI navbar.
 
+The dashboard and its API require an authenticated Airflow user. Reading the
+dashboard needs website (view) access; saving configuration changes requires
+permission to edit Airflow Variables — enforced through Airflow's auth manager.
+
 ## Alerting
 
 Alerts are dispatched through five channels:
@@ -158,8 +162,31 @@ Alerts are dispatched through five channels:
 git clone https://github.com/Redevil10/airflow-provider-watchdog.git
 cd airflow-provider-watchdog
 uv sync --extra dev
-uv run pytest
+uv run pytest tests/unit   # fast unit tests (Airflow mocked)
 ```
+
+### Integration tests
+
+The unit suite mocks Airflow. A separate integration suite runs the detector and
+dashboard SQL, the XCom round trip, and the auth dependencies against a **real**
+Airflow metadata database. PostgreSQL is the supported production backend, so it
+is the primary target; SQLite is also exercised because timestamps and JSON are
+read via raw SQL and differ by driver.
+
+```bash
+# PostgreSQL (recommended — matches production)
+docker run -d --rm --name wd_pg -e POSTGRES_USER=airflow \
+    -e POSTGRES_PASSWORD=airflow -e POSTGRES_DB=airflow -p 5432:5432 postgres:16
+WATCHDOG_IT_DB_URL="postgresql+psycopg2://airflow:airflow@localhost:5432/airflow" \
+    uv run --extra dev pytest tests/integration -m integration
+
+# SQLite (no service needed)
+WATCHDOG_IT_DB_URL="sqlite:////tmp/watchdog_it.db" \
+    uv run --extra dev pytest tests/integration -m integration
+```
+
+Integration tests are marked `integration` and skipped by default; CI runs them
+against a PostgreSQL service container (see `.github/workflows/integration.yml`).
 
 ## Known limitations
 
@@ -170,8 +197,8 @@ uv run pytest
 - [ ] Historical alert storage (dedicated table) for trend analysis
 - [ ] Sparkline charts in the dashboard showing duration trends
 - [x] Per-DAG detector enable/disable via `dag_overrides` config
-- [x] Multi-database support (PostgreSQL, MySQL, SQLite)
-- [x] GitHub Actions CI (lint, test, publish)
+- [x] Multi-database support — PostgreSQL (primary, integration-tested) and SQLite (tested); MySQL should work but is not covered in CI
+- [x] GitHub Actions CI (lint, unit, integration, publish)
 - [ ] Contribution to the [Airflow ecosystem page](https://airflow.apache.org/ecosystem/)
 
 ## License

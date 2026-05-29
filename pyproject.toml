@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "airflow-provider-watchdog"
-version = "0.3.1"
+version = "0.4.0"
 description = "A lightweight, zero-dependency Airflow provider that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, and stuck tasks."
 readme = "README.md"
 license = "Apache-2.0"
@@ -30,6 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: System :: Monitoring",
 ]
 dependencies = [
@@ -43,6 +44,9 @@ dev = [
     "ruff",
     "prek",
     "tox>=4.0",
+    # Drivers for running the integration suite against a real metadata DB.
+    "psycopg2-binary",
+    "asyncpg",
 ]
 
 [project.urls]
@@ -65,8 +69,16 @@ line-length = 99
 select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# Default to the unit suite so a bare `pytest` never touches the integration
+# harness. Run integration explicitly: `pytest tests/integration -m integration`.
+testpaths = ["tests/unit"]
 pythonpath = ["."]
+# Integration tests need a real Airflow metadata DB; skip them by default and
+# run them explicitly with `pytest -m integration` (see integration.yml).
+addopts = "-m 'not integration'"
+markers = [
+    "integration: end-to-end tests against a real Airflow metadata DB",
+]
 
 [tool.tox]
 env_list = ["airflow3"]
@@ -80,7 +92,7 @@ deps = [
     "pytest>=8.0",
     "pytest-cov",
 ]
-commands = [["pytest", "--cov=airflow_watchdog", "--cov-report=xml", "{posargs:tests/}"]]
+commands = [["pytest", "--cov=airflow_watchdog", "--cov-report=xml", "{posargs:tests/unit}"]]
 
 [tool.tox.env.verify-airflow3]
 description = "Verify the published PyPI package works with Airflow 3.x"
@@ -90,4 +102,4 @@ deps = [
     "apache-airflow>=3.0",
     "pytest>=8.0",
 ]
-commands = [["pytest", "{posargs:tests/}"]]
+commands = [["pytest", "{posargs:tests/unit}"]]
