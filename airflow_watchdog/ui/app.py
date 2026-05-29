@@ -73,11 +73,35 @@ async def _require_variable_write(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Not authorized to edit Watchdog config.")
 
 
+def _decode_xcom_value(value) -> dict | None:
+    """Decode the watchdog_results XCom value across DB backends.
+
+    The XCom ``value`` column is a JSON type, and reading it via raw SQL yields
+    different shapes per backend: PostgreSQL returns a JSON string, SQLite can
+    return a *double*-encoded string (JSON-of-JSON), and a JSONB column may come
+    back already decoded as a dict. Normalize all of these to a dict.
+    """
+    if isinstance(value, (bytes, bytearray)):
+        value = value.decode("utf-8", "replace")
+    # Decode up to twice to absorb the SQLite double-encoding case.
+    for _ in range(2):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, ValueError):
+                return None
+        else:
+            break
+    return value if isinstance(value, dict) else None
+
+
 def _get_dashboard_data() -> dict:
     """Gather data for the dashboard from the metadata DB."""
     from datetime import datetime, timezone
 
     from airflow.settings import Session
+
+    from airflow_watchdog.detectors._stats import as_datetime
 
     session = Session()
     data: dict = {
@@ -143,10 +167,9 @@ def _get_dashboard_data() -> dict:
         alert_row = session.execute(alerts_query).fetchone()
         alert_data: dict = {}
         if alert_row:
-            try:
-                alert_data = json.loads(alert_row.value)
-            except (json.JSONDecodeError, TypeError):
-                pass
+            parsed = _decode_xcom_value(alert_row.value)
+            if isinstance(parsed, dict):
+                alert_data = parsed
 
         # ── Build alert lookup by dag_id ───────────────────────────────
         alerts_by_dag: dict[str, list[dict]] = {}
@@ -174,14 +197,16 @@ def _get_dashboard_data() -> dict:
 
             data["summary"]["total_dags"] += 1
 
-            # Compute duration in Python (DB-agnostic)
+            # Compute duration in Python (DB-agnostic). Raw SQL returns
+            # timestamps as strings on SQLite, so normalize before arithmetic.
             lr = latest_runs.get(row.dag_id)
             last_run_state = lr.state if lr else None
-            last_run_start = lr.start_date if lr else None
+            last_run_start = None
             duration_secs = None
             if lr and lr.start_date:
-                end = lr.end_date if lr.end_date else now
-                duration_secs = (end - lr.start_date).total_seconds()
+                last_run_start = as_datetime(lr.start_date)
+                end = as_datetime(lr.end_date) if lr.end_date else now
+                duration_secs = (end - last_run_start).total_seconds()
 
             data["dags"].append(
                 {

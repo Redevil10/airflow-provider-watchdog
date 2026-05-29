@@ -9,7 +9,6 @@ Configuration via Airflow Variable ``watchdog_config`` (see config.py).
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import timedelta
 
@@ -97,7 +96,9 @@ def _run_watchdog(**context) -> str:
             }
         )
 
-    context["ti"].xcom_push(key="watchdog_results", value=json.dumps(summary))
+    # Push the dict directly — XCom serializes it to JSON. Passing a pre-dumped
+    # string would be double-encoded and the dashboard could not parse it back.
+    context["ti"].xcom_push(key="watchdog_results", value=summary)
 
     status = f"Watchdog complete: {len(all_alerts)} alert(s)"
     logger.info(status)

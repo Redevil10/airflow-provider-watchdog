@@ -44,6 +44,9 @@ dev = [
     "ruff",
     "prek",
     "tox>=4.0",
+    # Drivers for running the integration suite against a real metadata DB.
+    "psycopg2-binary",
+    "asyncpg",
 ]
 
 [project.urls]
@@ -68,6 +71,12 @@ select = ["E", "F", "I", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Integration tests need a real Airflow metadata DB; skip them by default and
+# run them explicitly with `pytest -m integration` (see integration.yml).
+addopts = "-m 'not integration'"
+markers = [
+    "integration: end-to-end tests against a real Airflow metadata DB",
+]
 
 [tool.tox]
 env_list = ["airflow3"]
