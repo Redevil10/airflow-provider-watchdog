@@ -1,0 +1,60 @@
+name: Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # PostgreSQL is the production backend; SQLite is exercised too because
+        # the watchdog reads timestamps/JSON via raw SQL, which differs by driver.
+        include:
+          - backend: postgres
+            db_url: "postgresql+psycopg2://airflow:airflow@localhost:5432/airflow"
+          - backend: sqlite
+            db_url: "sqlite:////tmp/watchdog_integration.db"
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: airflow
+          POSTGRES_PASSWORD: airflow
+          POSTGRES_DB: airflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U airflow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Create the virtualenv on Python 3.14
+        run: uv venv .venv --python 3.14
+
+      - name: Install dependencies (incl. DB drivers)
+        run: uv sync --extra dev
+
+      - name: Run integration tests (${{ matrix.backend }})
+        env:
+          WATCHDOG_IT_DB_URL: ${{ matrix.db_url }}
+        run: uv run --extra dev pytest tests/integration -m integration -v

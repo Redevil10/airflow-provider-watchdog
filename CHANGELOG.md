@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Python 3.14 support (added to classifiers and CI test matrix)
+- Integration test suite that runs the detector/dashboard SQL, the XCom round trip, and the auth dependencies against a **real** Airflow metadata DB; CI exercises it on a PostgreSQL service container and on SQLite
 
 ### Security
 
@@ -17,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deadline/stuck/schedule detectors and dashboard broken on SQLite** — raw SQL returns timestamps as strings on SQLite (vs `datetime` objects on PostgreSQL/MySQL), so duration arithmetic raised `TypeError`. Timestamps are now coerced via a shared `as_datetime` helper that works on every backend.
+- **Dashboard showed no alerts** — the watchdog DAG pushed `json.dumps(summary)` to XCom, which XCom serialized again (double-encoding); the dashboard's `json.loads` then yielded a string instead of a dict. The DAG now pushes the dict directly, and the dashboard decodes defensively across backends (handles single/double-encoded strings and pre-decoded JSON).
 - Failure-spike baseline now **excludes** the recent window (`rn > window`), so a fresh wave of failures no longer dilutes the baseline it's compared against
 - Naive metadata timestamps are now interpreted as UTC (the value Airflow actually stores) instead of `airflow.settings.TIMEZONE`, which produced incorrect elapsed times for deadline/stuck detection on non-UTC deployments
 - Dashboard DAG-link `base_url` is now passed through `encodeURI` for consistent escaping

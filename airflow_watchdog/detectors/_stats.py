@@ -31,6 +31,19 @@ def ensure_tz(dt: datetime) -> datetime:
     return dt
 
 
+def as_datetime(value: datetime | str) -> datetime:
+    """Coerce a raw SQL timestamp to a tz-aware UTC datetime.
+
+    Raw ``text()`` queries bypass SQLAlchemy's type handling, so SQLite returns
+    timestamps as ISO strings while PostgreSQL/MySQL return ``datetime`` objects.
+    This normalizes both to a tz-aware UTC datetime so duration arithmetic works
+    on every supported backend.
+    """
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return ensure_tz(value)
+
+
 def fmt_duration(secs: float) -> str:
     """Format a duration in seconds to a human-readable string."""
     if secs < 60:
