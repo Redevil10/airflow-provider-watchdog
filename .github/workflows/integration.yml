@@ -3,8 +3,20 @@ name: Integration
 on:
   push:
     branches: [main]
+    paths:
+      - "airflow_watchdog/**"
+      - "tests/integration/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/integration.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "airflow_watchdog/**"
+      - "tests/integration/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/integration.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
