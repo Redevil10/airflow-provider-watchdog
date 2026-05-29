@@ -103,6 +103,7 @@ def _get_dashboard_data() -> dict:
 
     from airflow_watchdog.detectors._stats import as_datetime
 
+    assert Session is not None  # configured by Airflow at runtime
     session = Session()
     data: dict = {
         "dags": [],
@@ -267,6 +268,7 @@ def _get_config_data() -> dict:
     """Load current config and DAG list for the config page."""
     from airflow.settings import Session
 
+    assert Session is not None  # configured by Airflow at runtime
     session = Session()
     data: dict = {"dags": [], "config": {}, "detector_names": []}
 
