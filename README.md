@@ -162,7 +162,7 @@ Alerts are dispatched through five channels:
 git clone https://github.com/Redevil10/airflow-provider-watchdog.git
 cd airflow-provider-watchdog
 uv sync --extra dev
-uv run pytest            # fast unit tests (Airflow mocked)
+uv run pytest tests/unit   # fast unit tests (Airflow mocked)
 ```
 
 ### Integration tests

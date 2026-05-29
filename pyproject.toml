@@ -69,7 +69,9 @@ line-length = 99
 select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# Default to the unit suite so a bare `pytest` never touches the integration
+# harness. Run integration explicitly: `pytest tests/integration -m integration`.
+testpaths = ["tests/unit"]
 pythonpath = ["."]
 # Integration tests need a real Airflow metadata DB; skip them by default and
 # run them explicitly with `pytest -m integration` (see integration.yml).
@@ -90,7 +92,7 @@ deps = [
     "pytest>=8.0",
     "pytest-cov",
 ]
-commands = [["pytest", "--cov=airflow_watchdog", "--cov-report=xml", "{posargs:tests/}"]]
+commands = [["pytest", "--cov=airflow_watchdog", "--cov-report=xml", "{posargs:tests/unit}"]]
 
 [tool.tox.env.verify-airflow3]
 description = "Verify the published PyPI package works with Airflow 3.x"
@@ -100,4 +102,4 @@ deps = [
     "apache-airflow>=3.0",
     "pytest>=8.0",
 ]
-commands = [["pytest", "{posargs:tests/}"]]
+commands = [["pytest", "{posargs:tests/unit}"]]
