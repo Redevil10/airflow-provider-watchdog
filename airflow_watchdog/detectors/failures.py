@@ -61,7 +61,7 @@ baseline AS (
         COUNT(*) AS total,
         SUM(CASE WHEN state = 'failed' THEN 1 ELSE 0 END) AS failures
     FROM numbered_runs
-    WHERE rn > :window AND rn <= :baseline_runs
+    WHERE rn > :window AND rn <= :baseline_runs + :window
     GROUP BY dag_id
     HAVING COUNT(*) >= 10
 )
