@@ -36,6 +36,7 @@ def _run_watchdog(**context) -> str:
     from airflow_watchdog.detectors.stuck import detect as detect_stuck
 
     config = load_config()
+    assert Session is not None  # configured by Airflow at runtime
     session = Session()
 
     all_alerts: list[Alert] = []
