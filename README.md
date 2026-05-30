@@ -4,7 +4,7 @@
 |-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **License** | [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | **PyPI**    | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-plugin-watchdog)](https://pypi.org/project/airflow-plugin-watchdog/) [![Downloads](https://img.shields.io/pypi/dm/airflow-plugin-watchdog)](https://pypi.org/project/airflow-plugin-watchdog/)                                              |
-| **CI**      | [![lint](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml) [![unit tests](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml) [![integration](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/integration.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/integration.yml) [![codecov](https://codecov.io/github/Redevil10/airflow-provider-watchdog/graph/badge.svg)](https://codecov.io/gh/Redevil10/airflow-provider-watchdog) |
+| **CI**      | [![lint](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/lint.yml/badge.svg)](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/lint.yml) [![unit tests](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/test.yml/badge.svg)](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/test.yml) [![integration](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/integration.yml/badge.svg)](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/integration.yml) [![codecov](https://codecov.io/github/Redevil10/airflow-plugin-watchdog/graph/badge.svg)](https://codecov.io/gh/Redevil10/airflow-plugin-watchdog) |
 
 A lightweight, zero-dependency Airflow plugin that monitors DAG and task health by querying the metadata database.
 
@@ -214,8 +214,8 @@ enough — you must also configure SMTP on the Airflow side.
 ## Development
 
 ```bash
-git clone https://github.com/Redevil10/airflow-provider-watchdog.git
-cd airflow-provider-watchdog
+git clone https://github.com/Redevil10/airflow-plugin-watchdog.git
+cd airflow-plugin-watchdog
 uv sync --extra dev
 uv run pytest tests/unit   # fast unit tests (Airflow mocked)
 ```

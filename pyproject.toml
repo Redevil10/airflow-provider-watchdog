@@ -49,7 +49,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Redevil10/airflow-provider-watchdog"
+Repository = "https://github.com/Redevil10/airflow-plugin-watchdog"
 
 # Register the plugin (dashboard, nav link, detection scheduler) via Airflow's
 # generic plugin entry point. This is the only registration the package needs —
