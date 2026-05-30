@@ -11,3 +11,4 @@ def test_provider_info():
     assert info["name"] == "Watchdog"
     assert "versions" in info
     assert len(info["versions"]) > 0
+    assert info["dags"] == ["airflow_watchdog.dag"]

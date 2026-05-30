@@ -15,7 +15,7 @@ Install:
     pip install airflow-provider-watchdog
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 
 def get_provider_info() -> dict:
@@ -27,4 +27,5 @@ def get_provider_info() -> dict:
             " — runtime anomalies, failure spikes, missed deadlines, stuck tasks."
         ),
         "versions": [__version__],
+        "dags": ["airflow_watchdog.dag"],
     }
