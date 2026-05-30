@@ -11,4 +11,15 @@ def test_provider_info():
     assert info["name"] == "Watchdog"
     assert "versions" in info
     assert len(info["versions"]) > 0
-    assert info["dags"] == ["airflow_watchdog.dag"]
+
+
+def test_provider_info_registers_plugin():
+    # The ``plugins`` key is the only way Airflow discovers the dashboard /
+    # nav-link plugin; a missing entry means the UI silently disappears.
+    info = get_provider_info()
+    assert info["plugins"] == [
+        {"name": "watchdog", "plugin-class": "airflow_watchdog.plugin.WatchdogPlugin"}
+    ]
+    # The old ``dags`` key was never a real Airflow mechanism — guard against it
+    # being reintroduced as a false promise of DAG auto-discovery.
+    assert "dags" not in info

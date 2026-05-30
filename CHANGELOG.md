@@ -5,11 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-30
+
+### Fixed
+
+- **Dashboard / nav link never appeared** — `WatchdogPlugin` was never registered, so the `/watchdog/` dashboard and the Browse → Watchdog nav link were invisible in every deployment. The plugin is now registered both via the provider-info `plugins` key and an `airflow.plugins` entry point (the latter survives `LAZY_LOAD_PROVIDERS=True`). Airflow dedupes by plugin name, so the two registrations don't double-mount.
+- **`"dags"` provider-info key did nothing** — the key added in 0.4.1 is not part of Airflow's provider-info schema and was silently ignored; Airflow has no mechanism to auto-discover DAGs shipped inside provider packages. Removed it.
+
+### Added
+
+- `example_dags/watchdog_monitor.py` — a one-line shim that re-exports the monitor DAG. Copy it into your `dags_folder` to expose `airflow_watchdog_monitor` to the scheduler (see README).
+- Provider-wiring integration tests asserting the plugin is discoverable via `ProvidersManager` and the monitor DAG loads cleanly in a `DagBag`.
+
+### Changed
+
+- README installation steps now reflect reality: `pip install` registers the dashboard, and the monitor DAG requires dropping the shim into `dags_folder`.
+
 ## [0.4.1] - 2026-05-30
 
 ### Fixed
 
-- **DAG not auto-discovered after install** — added missing `"dags"` key to provider info so Airflow's provider manager correctly discovers the `airflow_watchdog_monitor` DAG
+- **DAG not auto-discovered after install** — added missing `"dags"` key to provider info so Airflow's provider manager correctly discovers the `airflow_watchdog_monitor` DAG (superseded by 0.5.0 — this key is not a real Airflow mechanism and had no effect)
 
 ## [0.4.0] - 2026-05-29
 

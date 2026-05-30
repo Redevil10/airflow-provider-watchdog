@@ -197,6 +197,41 @@ class TestDashboardRoundTrip:
 # ── Authentication enforcement (real SimpleAuthManager) ──────────────────────────
 
 
+class TestProviderWiring:
+    """Asserts Airflow's *discovery* machinery actually surfaces the provider.
+
+    The other suites import ``watchdog_app`` / ``detect`` directly, so they
+    verify the components work but never exercise the registration layer — the
+    exact layer where a missing ``plugins`` key or an invalid DAG silently makes
+    the dashboard and monitor DAG disappear in a real deployment.
+    """
+
+    def test_plugin_is_discoverable_by_airflow(self):
+        # Goes through ProvidersManager (provider_info + entry points), the same
+        # path the webserver uses to mount FastAPI apps and nav links. Fails if
+        # get_provider_info() drops the ``plugins`` key.
+        from airflow.providers_manager import ProvidersManager
+
+        pm = ProvidersManager()
+        pm.initialize_providers_plugins()
+
+        watchdog = next((p for p in pm.plugins if p.name == "watchdog"), None)
+        assert watchdog is not None, "WatchdogPlugin was not discovered by Airflow"
+        assert watchdog.plugin_class == "airflow_watchdog.plugin.WatchdogPlugin"
+
+    def test_monitor_dag_loads_in_dagbag(self):
+        # Parses dag.py exactly as the scheduler's DagBag would. Fails if the DAG
+        # has an import/parse error or the dag_id ever drifts.
+        from airflow.dag_processing.dagbag import DagBag
+
+        import airflow_watchdog.dag as dag_mod
+
+        bag = DagBag(dag_folder=dag_mod.__file__, include_examples=False)
+
+        assert bag.import_errors == {}, f"DAG failed to parse: {bag.import_errors}"
+        assert "airflow_watchdog_monitor" in bag.dags
+
+
 class TestAuthEnforcement:
     def test_api_data_requires_auth(self, clean_tables):
         from fastapi.testclient import TestClient
