@@ -58,9 +58,7 @@ def start() -> None:
         if _thread is not None and _thread.is_alive():
             return
         _stop_event.clear()
-        _thread = threading.Thread(
-            target=_run_loop, name="watchdog-scheduler", daemon=True
-        )
+        _thread = threading.Thread(target=_run_loop, name="watchdog-scheduler", daemon=True)
         _thread.start()
         logger.info("Watchdog scheduler started")
 
@@ -81,8 +79,14 @@ def stop() -> None:
         _stop_event.set()
     thread.join(timeout=10.0)
     with _state_lock:
-        _thread = None
-    logger.info("Watchdog scheduler stopped")
+        if thread.is_alive():
+            # The tick outran the join timeout. Keep the reference so start()'s
+            # is_alive() guard still refuses to spawn a duplicate; the thread
+            # will exit on its next _stop_event.wait() (still set) on its own.
+            logger.warning("Watchdog scheduler did not exit within 10s; leaving it to finish")
+        elif _thread is thread:
+            _thread = None
+            logger.info("Watchdog scheduler stopped")
 
 
 # ── Loop ──────────────────────────────────────────────────────────────────────
@@ -176,9 +180,7 @@ def _advisory_lock():
             )
         elif dialect in ("mysql", "mariadb"):
             acquired = (
-                session.execute(
-                    text("SELECT GET_LOCK(:n, 0)"), {"n": _MYSQL_LOCK_NAME}
-                ).scalar()
+                session.execute(text("SELECT GET_LOCK(:n, 0)"), {"n": _MYSQL_LOCK_NAME}).scalar()
                 == 1
             )
         else:
