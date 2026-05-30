@@ -34,50 +34,59 @@ def _auth_disabled():
 
 @pytest.fixture()
 def _mock_airflow():
-    """Patch Airflow imports so dashboard code can be loaded without Airflow."""
+    """Patch Airflow imports so dashboard code can be loaded without Airflow.
+
+    Yields ``(session_cls, variable)``: the mocked ``Session`` class (set
+    ``.return_value`` to the per-test session) and the mocked ``Variable`` whose
+    ``get`` returns the stored detection summary (``None`` by default).
+    """
     mock_session_cls = MagicMock()
     mock_settings = MagicMock()
     mock_settings.Session = mock_session_cls
+
+    mock_variable = MagicMock()
+    mock_variable.get.return_value = None  # no stored results unless a test sets it
+    mock_models = MagicMock()
+    mock_models.Variable = mock_variable
+
     with patch.dict(
         "sys.modules",
         {
             "airflow": MagicMock(),
             "airflow.settings": mock_settings,
+            "airflow.models": mock_models,
         },
     ):
         with _auth_disabled():
-            yield mock_session_cls
+            yield mock_session_cls, mock_variable
 
 
-def _make_session(dag_rows, run_rows, alert_row=None):
-    """Build a mock session that returns controlled rows for each query."""
+def _make_session(dag_rows, run_rows):
+    """Build a mock session that returns controlled rows for each query.
+
+    The dashboard issues two live queries (DAGs, then latest runs); alerts come
+    from the ``watchdog_last_results`` Variable, not from a query.
+    """
     session = MagicMock()
-    results = []
 
-    # Query 1: dag table
     r1 = MagicMock()
     r1.fetchall.return_value = dag_rows
-    results.append(r1)
-
-    # Query 2: dag_run with ROW_NUMBER
     r2 = MagicMock()
     r2.fetchall.return_value = run_rows
-    results.append(r2)
 
-    # Query 3: xcom alerts
-    r3 = MagicMock()
-    r3.fetchone.return_value = alert_row
-    results.append(r3)
-
-    session.execute.side_effect = results
+    session.execute.side_effect = [r1, r2]
     return session
 
 
+def _alerts_json(alerts: list[dict]) -> str:
+    """Serialize an alert list the way the results Variable stores it."""
+    return json.dumps({"total_alerts": len(alerts), "by_type": {}, "alerts": alerts})
+
+
 class TestGetDashboardData:
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_returns_empty_structure_when_no_data(self, _mock_airflow):
-        session = _make_session([], [], None)
-        _mock_airflow.return_value = session
+        mock_session_cls, _ = _mock_airflow
+        mock_session_cls.return_value = _make_session([], [])
 
         from airflow_watchdog.ui.app import _get_dashboard_data
 
@@ -88,8 +97,8 @@ class TestGetDashboardData:
         assert data["summary"]["total_dags"] == 0
         assert "error" not in data
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_assembles_dag_with_run_and_alerts(self, _mock_airflow):
+        mock_session_cls, mock_variable = _mock_airflow
         now = datetime.now(timezone.utc)
 
         dag_rows = [SimpleNamespace(dag_id="etl_daily", is_paused=False)]
@@ -102,21 +111,10 @@ class TestGetDashboardData:
                 rn=1,
             )
         ]
-        alert_json = json.dumps(
-            {
-                "alerts": [
-                    {
-                        "dag_id": "etl_daily",
-                        "severity": "warning",
-                        "message": "slow",
-                    }
-                ]
-            }
+        mock_session_cls.return_value = _make_session(dag_rows, run_rows)
+        mock_variable.get.return_value = _alerts_json(
+            [{"dag_id": "etl_daily", "severity": "warning", "message": "slow"}]
         )
-        alert_row = SimpleNamespace(value=alert_json)
-
-        session = _make_session(dag_rows, run_rows, alert_row)
-        _mock_airflow.return_value = session
 
         from airflow_watchdog.ui.app import _get_dashboard_data
 
@@ -132,20 +130,16 @@ class TestGetDashboardData:
         assert len(dag["alerts"]) == 1
         assert data["summary"]["warning"] == 1
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_critical_sorted_before_healthy(self, _mock_airflow):
+        mock_session_cls, mock_variable = _mock_airflow
         dag_rows = [
             SimpleNamespace(dag_id="aaa_healthy", is_paused=False),
             SimpleNamespace(dag_id="zzz_critical", is_paused=False),
         ]
-        run_rows = []
-        alert_json = json.dumps(
-            {"alerts": [{"dag_id": "zzz_critical", "severity": "critical", "message": "bad"}]}
+        mock_session_cls.return_value = _make_session(dag_rows, [])
+        mock_variable.get.return_value = _alerts_json(
+            [{"dag_id": "zzz_critical", "severity": "critical", "message": "bad"}]
         )
-        alert_row = SimpleNamespace(value=alert_json)
-
-        session = _make_session(dag_rows, run_rows, alert_row)
-        _mock_airflow.return_value = session
 
         from airflow_watchdog.ui.app import _get_dashboard_data
 
@@ -154,11 +148,11 @@ class TestGetDashboardData:
         assert data["dags"][0]["dag_id"] == "zzz_critical"
         assert data["dags"][1]["dag_id"] == "aaa_healthy"
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_db_error_sets_error_key(self, _mock_airflow):
+        mock_session_cls, _ = _mock_airflow
         session = MagicMock()
         session.execute.side_effect = Exception("DB down")
-        _mock_airflow.return_value = session
+        mock_session_cls.return_value = session
 
         from airflow_watchdog.ui.app import _get_dashboard_data
 
@@ -167,13 +161,10 @@ class TestGetDashboardData:
         assert "error" in data
         assert data["dags"] == []
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_dag_without_run_has_null_duration(self, _mock_airflow):
+        mock_session_cls, _ = _mock_airflow
         dag_rows = [SimpleNamespace(dag_id="new_dag", is_paused=False)]
-        run_rows = []
-
-        session = _make_session(dag_rows, run_rows, None)
-        _mock_airflow.return_value = session
+        mock_session_cls.return_value = _make_session(dag_rows, [])
 
         from airflow_watchdog.ui.app import _get_dashboard_data
 
@@ -186,10 +177,9 @@ class TestGetDashboardData:
 
 
 class TestDashboardEndpoints:
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_dashboard_returns_html(self, _mock_airflow):
-        session = _make_session([], [], None)
-        _mock_airflow.return_value = session
+        mock_session_cls, _ = _mock_airflow
+        mock_session_cls.return_value = _make_session([], [])
 
         from fastapi.testclient import TestClient
 
@@ -202,11 +192,10 @@ class TestDashboardEndpoints:
         assert "text/html" in resp.headers["content-type"]
         assert "Watchdog Dashboard" in resp.text
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_dashboard_html_escapes_json(self, _mock_airflow):
+        mock_session_cls, _ = _mock_airflow
         dag_rows = [SimpleNamespace(dag_id="<script>alert(1)</script>", is_paused=False)]
-        session = _make_session(dag_rows, [], None)
-        _mock_airflow.return_value = session
+        mock_session_cls.return_value = _make_session(dag_rows, [])
 
         from fastapi.testclient import TestClient
 
@@ -218,10 +207,9 @@ class TestDashboardEndpoints:
         assert "<script>alert(1)</script>" not in resp.text
         assert "\\u003cscript\\u003e" in resp.text
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_api_data_returns_json(self, _mock_airflow):
-        session = _make_session([], [], None)
-        _mock_airflow.return_value = session
+        mock_session_cls, _ = _mock_airflow
+        mock_session_cls.return_value = _make_session([], [])
 
         from fastapi.testclient import TestClient
 
@@ -396,9 +384,9 @@ def _patch_auth_modules(authorized: bool):
 
 
 class TestAuth:
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_view_endpoint_rejects_unauthenticated(self, _mock_airflow):
-        _mock_airflow.return_value = _make_session([], [], None)
+        mock_session_cls, _ = _mock_airflow
+        mock_session_cls.return_value = _make_session([], [])
 
         from fastapi.testclient import TestClient
 
@@ -412,9 +400,9 @@ class TestAuth:
             resp = client.get("/api/data")
         assert resp.status_code == 401
 
-    @pytest.mark.usefixtures("_mock_airflow")
     def test_view_endpoint_rejects_unauthorized(self, _mock_airflow):
-        _mock_airflow.return_value = _make_session([], [], None)
+        mock_session_cls, _ = _mock_airflow
+        mock_session_cls.return_value = _make_session([], [])
 
         from fastapi.testclient import TestClient
 

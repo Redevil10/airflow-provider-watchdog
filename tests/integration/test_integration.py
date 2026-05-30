@@ -1,8 +1,9 @@
 """End-to-end integration tests against a real Airflow metadata DB + auth.
 
 These exercise the parts the unit tests cannot: the hand-written detector and
-dashboard SQL against the real schema, the XCom serialize/deserialize round
-trip, and that the dashboard endpoints actually enforce authentication.
+dashboard SQL against the real schema, the results Variable round trip that
+feeds the dashboard, and that the dashboard endpoints actually enforce
+authentication.
 """
 
 from __future__ import annotations
@@ -123,43 +124,25 @@ class TestDetectorSQL:
         assert alerts[0].details["elapsed_secs"] == pytest.approx(3600, abs=120)
 
 
-# ── Dashboard data round trip (real XCom serialize/deserialize) ──────────────────
+# ── Dashboard data round trip (real results Variable) ───────────────────────────
 
 
 class TestDashboardRoundTrip:
-    def test_alerts_flow_from_xcom_to_dashboard(self, clean_tables):
+    def test_alerts_flow_from_variable_to_dashboard(self, clean_tables):
         session = clean_tables
-        from airflow.models.xcom import XComModel
+        import json
 
+        from airflow.models import Variable
+
+        from airflow_watchdog.monitor import RESULTS_VARIABLE_KEY
         from airflow_watchdog.ui.app import _get_dashboard_data
 
         seed_dag(session, "etl")
         start = _now() - timedelta(minutes=5)
         seed_dag_run(session, "etl", "etl_run", "success", start, start + timedelta(minutes=1))
 
-        # Reproduce exactly what the (fixed) watchdog DAG pushes: a dict value.
-        wd_start = _now() - timedelta(minutes=2)
-        wd_run_id = "wd_run"
-        seed_dag(session, "airflow_watchdog_monitor")
-        seed_dag_run(
-            session,
-            "airflow_watchdog_monitor",
-            wd_run_id,
-            "success",
-            wd_start,
-            wd_start + timedelta(seconds=5),
-        )
-        # XCom has a FK to task_instance; the push happens from run_detectors.
-        seed_task_instance(
-            session,
-            "airflow_watchdog_monitor",
-            "run_detectors",
-            wd_run_id,
-            "success",
-            wd_start,
-            wd_start + timedelta(seconds=5),
-            5.0,
-        )
+        # Reproduce exactly what the scheduler persists: the detection summary
+        # JSON in the watchdog_last_results Variable.
         summary = {
             "total_alerts": 1,
             "by_type": {"runtime_anomaly": 1},
@@ -174,18 +157,13 @@ class TestDashboardRoundTrip:
                     "details": {},
                 }
             ],
+            "generated_at": _now().isoformat(),
         }
-        XComModel.set(
-            key="watchdog_results",
-            value=summary,
-            dag_id="airflow_watchdog_monitor",
-            task_id="run_detectors",
-            run_id=wd_run_id,
-            session=session,
-        )
-        session.commit()
-
-        data = _get_dashboard_data()
+        Variable.set(RESULTS_VARIABLE_KEY, json.dumps(summary))
+        try:
+            data = _get_dashboard_data()
+        finally:
+            Variable.delete(RESULTS_VARIABLE_KEY)
 
         assert "error" not in data
         etl = next(d for d in data["dags"] if d["dag_id"] == "etl")
@@ -197,39 +175,41 @@ class TestDashboardRoundTrip:
 # ── Authentication enforcement (real SimpleAuthManager) ──────────────────────────
 
 
-class TestProviderWiring:
-    """Asserts Airflow's *discovery* machinery actually surfaces the provider.
+class TestPluginWiring:
+    """Asserts Airflow's plugin-discovery machinery actually surfaces the plugin.
 
     The other suites import ``watchdog_app`` / ``detect`` directly, so they
     verify the components work but never exercise the registration layer — the
-    exact layer where a missing ``plugins`` key or an invalid DAG silently makes
-    the dashboard and monitor DAG disappear in a real deployment.
+    exact layer where a broken ``airflow.plugins`` entry point silently makes the
+    dashboard and its scheduler disappear in a real deployment.
     """
 
     def test_plugin_is_discoverable_by_airflow(self):
-        # Goes through ProvidersManager (provider_info + entry points), the same
-        # path the webserver uses to mount FastAPI apps and nav links. Fails if
-        # get_provider_info() drops the ``plugins`` key.
-        from airflow.providers_manager import ProvidersManager
+        # Goes through plugins_manager (the ``airflow.plugins`` entry point), the
+        # same path the API server uses to mount FastAPI apps and nav links.
+        # Fails if the entry point is dropped or the plugin no longer exposes the
+        # dashboard app.
+        from airflow import plugins_manager
 
-        pm = ProvidersManager()
-        pm.initialize_providers_plugins()
+        plugins_manager.get_fastapi_plugins.cache_clear()
+        apps, _ = plugins_manager.get_fastapi_plugins()
 
-        watchdog = next((p for p in pm.plugins if p.name == "watchdog"), None)
-        assert watchdog is not None, "WatchdogPlugin was not discovered by Airflow"
-        assert watchdog.plugin_class == "airflow_watchdog.plugin.WatchdogPlugin"
+        prefixes = [a.get("url_prefix") for a in apps]
+        assert "/watchdog" in prefixes, f"watchdog plugin was not discovered: {prefixes}"
 
-    def test_monitor_dag_loads_in_dagbag(self):
-        # Parses dag.py exactly as the scheduler's DagBag would. Fails if the DAG
-        # has an import/parse error or the dag_id ever drifts.
-        from airflow.dag_processing.dagbag import DagBag
+    def test_scheduler_starts_with_app_lifespan(self):
+        # The detection scheduler is started by the plugin app's FastAPI
+        # lifespan, which Airflow runs only in the API server. Drive the lifespan
+        # and assert the scheduler thread actually comes up (then shuts down).
+        from fastapi.testclient import TestClient
 
-        import airflow_watchdog.dag as dag_mod
+        from airflow_watchdog import scheduler
+        from airflow_watchdog.ui.app import watchdog_app
 
-        bag = DagBag(dag_folder=dag_mod.__file__, include_examples=False)
-
-        assert bag.import_errors == {}, f"DAG failed to parse: {bag.import_errors}"
-        assert "airflow_watchdog_monitor" in bag.dags
+        assert not scheduler.is_running()
+        with TestClient(watchdog_app):  # entering the context runs startup
+            assert scheduler.is_running()
+        assert not scheduler.is_running()
 
 
 class TestAuthEnforcement:

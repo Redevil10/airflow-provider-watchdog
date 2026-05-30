@@ -1,14 +1,14 @@
-# airflow-provider-watchdog
+# airflow-plugin-watchdog
 
 | Category    | Badges                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 |-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **License** | [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| **PyPI**    | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/) [![Downloads](https://img.shields.io/pypi/dm/airflow-provider-watchdog)](https://pypi.org/project/airflow-provider-watchdog/)                                              |
-| **CI**      | [![lint](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/lint.yml) [![unit tests](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/test.yml) [![integration](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/integration.yml/badge.svg)](https://github.com/Redevil10/airflow-provider-watchdog/actions/workflows/integration.yml) [![codecov](https://codecov.io/github/Redevil10/airflow-provider-watchdog/graph/badge.svg)](https://codecov.io/gh/Redevil10/airflow-provider-watchdog) |
+| **PyPI**    | [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/downloads/) [![airflow](https://img.shields.io/badge/airflow-3.0%2B-blue.svg)](https://airflow.apache.org/) [![PyPI](https://img.shields.io/pypi/v/airflow-plugin-watchdog)](https://pypi.org/project/airflow-plugin-watchdog/) [![Downloads](https://img.shields.io/pypi/dm/airflow-plugin-watchdog)](https://pypi.org/project/airflow-plugin-watchdog/)                                              |
+| **CI**      | [![lint](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/lint.yml/badge.svg)](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/lint.yml) [![unit tests](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/test.yml/badge.svg)](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/test.yml) [![integration](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/integration.yml/badge.svg)](https://github.com/Redevil10/airflow-plugin-watchdog/actions/workflows/integration.yml) [![codecov](https://codecov.io/github/Redevil10/airflow-plugin-watchdog/graph/badge.svg)](https://codecov.io/gh/Redevil10/airflow-plugin-watchdog) |
 
-A lightweight, zero-dependency Airflow provider that monitors DAG and task health by querying the metadata database.
+A lightweight, zero-dependency Airflow plugin that monitors DAG and task health by querying the metadata database.
 
-No Prometheus. No Grafana. No Datadog. Just `pip install`, drop in one DAG file, and go.
+No Prometheus. No Grafana. No Datadog. No DAG to deploy. Just `pip install` and go.
 
 ## What it detects
 
@@ -29,26 +29,21 @@ No Prometheus. No Grafana. No Datadog. Just `pip install`, drop in one DAG file,
 ## Installation
 
 ```bash
-pip install airflow-provider-watchdog
+pip install airflow-plugin-watchdog
 ```
 
-This registers the **`/watchdog/` dashboard**, accessible from the Airflow UI under Browse → Watchdog (no extra steps — it loads via the provider's plugin entry point).
+This registers the **`/watchdog/` dashboard** (accessible from the Airflow UI
+under Browse → Watchdog) **and** the detection scheduler. There is **no DAG to
+deploy** — detection runs on a background scheduler inside the Airflow API-server
+process, which is started automatically by the plugin.
 
-### Enable the monitor DAG
+> **Why no DAG?** Airflow 3 isolates task execution from the metadata database
+> (AIP-72): a task may not access it via the ORM. Watchdog's detectors need that
+> data, so detection runs on the API server — where direct metadata-DB access is
+> sanctioned — instead of inside a worker task. See [How it works](#how-it-works).
 
-Airflow does not auto-discover DAGs that live inside provider packages, so add a
-one-line shim to your `dags_folder` (default `$AIRFLOW_HOME/dags/`) to expose the
-**`airflow_watchdog_monitor` DAG** (runs every 30 minutes, configurable):
-
-```python
-# $AIRFLOW_HOME/dags/watchdog_monitor.py
-from airflow_watchdog.dag import dag  # noqa: F401
-```
-
-A ready-to-copy version lives at [`example_dags/watchdog_monitor.py`](example_dags/watchdog_monitor.py).
-
-After installing, **restart the scheduler and the API server** so the plugin and
-DAG are picked up.
+After installing, **restart the API server** so the plugin and its scheduler are
+picked up. By default detection runs every 30 minutes (configurable — see below).
 
 ## Configuration
 
@@ -83,7 +78,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 
 | Field | Default | Description |
 |---|---|---|
-| `schedule_interval_minutes` | `30` | How often the watchdog DAG runs |
+| `schedule_interval_minutes` | `30` | How often detection runs (read each cycle — changes apply without a restart) |
 | `lookback_runs` | `20` | Number of recent runs used for statistical baselines |
 | `runtime_iqr_multiplier` | `1.5` | IQR multiplier for runtime anomaly fences |
 | `failure_window_runs` | `10` | Recent window size for failure rate calculation |
@@ -92,7 +87,7 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 | `deadline_multiplier` | `2.0` | Alert when DAG run exceeds this × median duration |
 | `stuck_multiplier` | `2.0` | Alert when task exceeds this × historical max duration |
 | `schedule_iqr_multiplier` | `1.5` | IQR multiplier for start/end time-of-day fences |
-| `exclude_dags` | `[]` | DAG IDs to skip (`airflow_watchdog_monitor` is always excluded) |
+| `exclude_dags` | `[]` | DAG IDs to skip during detection |
 | `disable_detectors` | `[]` | Detector names to disable globally (e.g. `["schedule_anomaly"]`) |
 | `dag_overrides` | `{}` | Per-DAG overrides: `{"dag_id": {"disable_detectors": [...]}}` |
 | `alert_emails` | `[]` | Email addresses for alert notifications |
@@ -104,28 +99,35 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 
 ### Architecture
 
+Detection runs entirely inside the **Airflow API-server** process, started by the
+plugin's FastAPI lifespan. A background scheduler fires every
+`schedule_interval_minutes`; across multiple API-server replicas a database
+advisory lock plus a last-run check ensures only one cycle runs per interval.
+Both the detectors and the dashboard read the metadata DB directly here — the
+sanctioned place for it in Airflow 3 — so nothing ever runs in a worker task.
+
 ```mermaid
 flowchart TD
-    subgraph dag["airflow_watchdog_monitor DAG"]
+    subgraph api["Airflow API server (FastAPI plugin)"]
         direction TB
-        runtime["Runtime<br/>Detector"]
-        failure["Failure<br/>Detector"]
-        deadline["Deadline<br/>Detector"]
-        stuck["Stuck<br/>Detector"]
-        schedule["Schedule<br/>Detector"]
+        timer["Background scheduler<br/><i>every N min · advisory-locked</i>"]
 
-        runtime --> alerting
-        failure --> alerting
-        deadline --> alerting
-        stuck --> alerting
-        schedule --> alerting
+        subgraph det["Detectors"]
+            runtime["Runtime"]
+            failure["Failure"]
+            deadline["Deadline"]
+            stuck["Stuck"]
+            schedule["Schedule"]
+        end
 
-        alerting["Alerting<br/><i>Log / Email / Slack / Teams / Discord</i>"]
-        xcom[("XCom<br/>(results)")]
-        alerting --> xcom
+        timer --> det
+        det --> alerting["Alerting<br/><i>Log / Email / Slack / Teams / Discord</i>"]
+        det --> var[("Variable<br/>watchdog_last_results")]
+        var --> dashboard["/watchdog/ Dashboard"]
     end
 
-    xcom --> dashboard["/watchdog/ Dashboard<br/><i>(FastAPI)</i>"]
+    db[("Metadata DB<br/><i>dag_run · task_instance</i>")] -.read.-> det
+    db -.read.-> dashboard
 ```
 
 ### Detection methods
@@ -163,7 +165,7 @@ every other channel stays silent until you set the matching field in
 
 | Channel | Config field | Default |
 |---|---|---|
-| **Airflow task logs** | _(none)_ | **always on** — visible in the `airflow_watchdog_monitor` DAG run logs |
+| **API-server logs** | _(none)_ | **always on** — alerts are logged by the scheduler in the Airflow API-server logs |
 | **Email** | `alert_emails` | off — also requires Airflow SMTP (see below) |
 | **Slack** | `alert_slack_webhook` | off |
 | **MS Teams** (Adaptive Card) | `alert_teams_webhook` | off |
@@ -201,9 +203,9 @@ enough — you must also configure SMTP on the Airflow side.
    Some Airflow 3 deployments use an SMTP **Connection** (`smtp_default`) instead
    of `airflow.cfg` — configure it under Admin → Connections in that case.
 
-> **Fail-soft:** delivery failures never fail the DAG. If a channel is
-> misconfigured (e.g. SMTP not set up, or a bad webhook URL), the run still
-> succeeds and the error is logged in the `airflow_watchdog_monitor` task log
+> **Fail-soft:** a delivery failure never breaks the detection cycle. If a
+> channel is misconfigured (e.g. SMTP not set up, or a bad webhook URL), the
+> cycle still completes and the error is logged in the API-server logs
 > (`Failed to send watchdog email` / `… Slack notification`, etc.). If you
 > configured a channel but see nothing, check that log first. Also note alerts
 > are only dispatched when there's something to report — a clean run sends
@@ -212,8 +214,8 @@ enough — you must also configure SMTP on the Airflow side.
 ## Development
 
 ```bash
-git clone https://github.com/Redevil10/airflow-provider-watchdog.git
-cd airflow-provider-watchdog
+git clone https://github.com/Redevil10/airflow-plugin-watchdog.git
+cd airflow-plugin-watchdog
 uv sync --extra dev
 uv run pytest tests/unit   # fast unit tests (Airflow mocked)
 ```
@@ -221,8 +223,8 @@ uv run pytest tests/unit   # fast unit tests (Airflow mocked)
 ### Integration tests
 
 The unit suite mocks Airflow. A separate integration suite runs the detector and
-dashboard SQL, the XCom round trip, and the auth dependencies against a **real**
-Airflow metadata database. PostgreSQL is the supported production backend, so it
+dashboard SQL, the results-Variable round trip, and the auth dependencies against
+a **real** Airflow metadata database. PostgreSQL is the supported production backend, so it
 is the primary target; SQLite is also exercised because timestamps and JSON are
 read via raw SQL and differ by driver.
 
@@ -243,7 +245,8 @@ against a PostgreSQL service container (see `.github/workflows/integration.yml`)
 
 ## Known limitations
 
-- **XCom-based dashboard** — alert history is limited to the latest watchdog run. A future version may store results in a dedicated table for historical trending.
+- **Latest-run only** — the dashboard shows the most recent detection cycle (stored in the `watchdog_last_results` Variable); there is no alert history. A future version may store results in a dedicated table for historical trending.
+- **Detection is not a DAG run** — because detection runs on the API server rather than as a task, it does not appear in Airflow's DAG/run list; its activity is visible in the dashboard and the API-server logs instead.
 
 ## Roadmap
 
