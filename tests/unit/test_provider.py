@@ -14,8 +14,10 @@ def test_provider_info():
 
 
 def test_provider_info_registers_plugin():
-    # The ``plugins`` key is the only way Airflow discovers the dashboard /
-    # nav-link plugin; a missing entry means the UI silently disappears.
+    # The ``plugins`` key is the canonical way Airflow discovers the dashboard /
+    # nav-link plugin (the ``airflow.plugins`` entry point in pyproject.toml is a
+    # fallback that also survives LAZY_LOAD_PROVIDERS); dropping it means the UI
+    # silently disappears on the provider-info path.
     info = get_provider_info()
     assert info["plugins"] == [
         {"name": "watchdog", "plugin-class": "airflow_watchdog.plugin.WatchdogPlugin"}
