@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "airflow-provider-watchdog"
-version = "0.5.0"
-description = "A lightweight, zero-dependency Airflow provider that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, and stuck tasks."
+name = "airflow-plugin-watchdog"
+version = "0.6.0"
+description = "A lightweight, zero-dependency Airflow plugin that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, stuck tasks, and schedule anomalies."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
@@ -17,12 +17,11 @@ keywords = [
     "monitoring",
     "anomaly-detection",
     "dag-health",
-    "provider",
+    "plugin",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: Apache Airflow",
-    "Framework :: Apache Airflow :: Provider",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
@@ -52,14 +51,11 @@ dev = [
 [project.urls]
 Repository = "https://github.com/Redevil10/airflow-provider-watchdog"
 
-[project.entry-points."apache_airflow_provider"]
-provider_info = "airflow_watchdog:get_provider_info"
-
-# Also register the plugin via the generic plugin entry point. The provider_info
-# ``plugins`` key is the canonical path, but it is skipped at startup when
-# ``LAZY_LOAD_PROVIDERS`` is enabled — this entry point is always loaded, so the
-# dashboard/nav link survives that config. (Airflow dedupes by plugin name, so
-# the two registrations don't double-mount.)
+# Register the plugin (dashboard, nav link, detection scheduler) via Airflow's
+# generic plugin entry point. This is the only registration the package needs —
+# it is loaded at API-server startup regardless of ``LAZY_LOAD_PROVIDERS``. The
+# package is intentionally a plain Airflow plugin, not a provider, so there is no
+# ``apache_airflow_provider`` entry point.
 [project.entry-points."airflow.plugins"]
 watchdog = "airflow_watchdog.plugin:WatchdogPlugin"
 
@@ -106,7 +102,7 @@ commands = [["pytest", "--cov=airflow_watchdog", "--cov-report=xml", "{posargs:t
 description = "Verify the published PyPI package works with Airflow 3.x"
 skip_install = true
 deps = [
-    "airflow-provider-watchdog",
+    "airflow-plugin-watchdog",
     "apache-airflow>=3.0",
     "pytest>=8.0",
 ]

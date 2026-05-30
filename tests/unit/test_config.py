@@ -18,7 +18,7 @@ def test_defaults():
     assert config.lookback_runs == 20
     assert config.runtime_iqr_multiplier == 1.5
     assert config.failure_spike_ratio == 2.0
-    assert "airflow_watchdog_monitor" in config.exclude_dags
+    assert config.exclude_dags == []
 
 
 def test_overrides():
@@ -38,19 +38,18 @@ def test_overrides():
     assert config.failure_spike_ratio == 2.0
 
 
-def test_watchdog_dag_always_excluded():
-    """The watchdog's own DAG is always in exclude_dags."""
+def test_exclude_dags_normalized():
+    """exclude_dags overrides are de-duplicated and sorted."""
     import json
 
-    overrides = json.dumps({"exclude_dags": ["my_dag"]})
+    overrides = json.dumps({"exclude_dags": ["b_dag", "a_dag", "b_dag"]})
 
     mock_models = MagicMock()
     mock_models.Variable.get.return_value = overrides
     with patch.dict("sys.modules", {"airflow.models": mock_models, "airflow": MagicMock()}):
         config = load_config()
 
-    assert "airflow_watchdog_monitor" in config.exclude_dags
-    assert "my_dag" in config.exclude_dags
+    assert config.exclude_dags == ["a_dag", "b_dag"]
 
 
 def test_fallback_on_import_error():

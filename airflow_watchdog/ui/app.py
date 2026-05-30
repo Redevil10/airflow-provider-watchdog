@@ -5,8 +5,14 @@ Registers a ``/watchdog`` route in the Airflow webserver that shows an
 overview of all DAGs with their health status and highlights problems.
 
 Data comes from:
-1. The latest XCom from the ``airflow_watchdog_monitor`` DAG (alert results)
+1. The latest detection summary stored in the ``watchdog_last_results`` Variable
+   by the background scheduler (alert results)
 2. Live queries against ``dag_run`` and ``task_instance`` for current status
+
+This module also owns the detection scheduler's lifecycle: Airflow runs a
+mounted plugin app's FastAPI lifespan only in the API server, so starting the
+scheduler here guarantees detection runs where ORM/metadata-DB access is allowed
+(never inside a task — see ``scheduler.py`` and ``monitor.py``).
 """
 
 from __future__ import annotations
@@ -14,13 +20,27 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 logger = logging.getLogger(__name__)
 
-watchdog_app = FastAPI()
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Start the detection scheduler with the API server, stop it on shutdown."""
+    from airflow_watchdog import scheduler
+
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.stop()
+
+
+watchdog_app = FastAPI(lifespan=_lifespan)
 
 
 # ── Authentication ─────────────────────────────────────────────────────────────
@@ -71,28 +91,6 @@ async def _require_variable_write(request: Request) -> None:
         method="PUT", details=VariableDetails(key=_VARIABLE_KEY), user=user
     ):
         raise HTTPException(status_code=403, detail="Not authorized to edit Watchdog config.")
-
-
-def _decode_xcom_value(value) -> dict | None:
-    """Decode the watchdog_results XCom value across DB backends.
-
-    The XCom ``value`` column is a JSON type, and reading it via raw SQL yields
-    different shapes per backend: PostgreSQL returns a JSON string, SQLite can
-    return a *double*-encoded string (JSON-of-JSON), and a JSONB column may come
-    back already decoded as a dict. Normalize all of these to a dict.
-    """
-    if isinstance(value, (bytes, bytearray)):
-        value = value.decode("utf-8", "replace")
-    # Decode up to twice to absorb the SQLite double-encoding case.
-    for _ in range(2):
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except (json.JSONDecodeError, ValueError):
-                return None
-        else:
-            break
-    return value if isinstance(value, dict) else None
 
 
 def _get_dashboard_data() -> dict:
@@ -152,25 +150,10 @@ def _get_dashboard_data() -> dict:
             if row.rn == 1:
                 latest_runs[row.dag_id] = row
 
-        # ── Get latest watchdog alerts from XCom ───────────────────────
-        alerts_query = text(
-            """\
-            SELECT value
-            FROM xcom
-            WHERE dag_id = 'airflow_watchdog_monitor'
-              AND task_id = 'run_detectors'
-              AND key = 'watchdog_results'
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """
-        )
+        # ── Get latest watchdog alerts from the results Variable ───────
+        from airflow_watchdog.monitor import load_results
 
-        alert_row = session.execute(alerts_query).fetchone()
-        alert_data: dict = {}
-        if alert_row:
-            parsed = _decode_xcom_value(alert_row.value)
-            if isinstance(parsed, dict):
-                alert_data = parsed
+        alert_data: dict = load_results()
 
         # ── Build alert lookup by dag_id ───────────────────────────────
         alerts_by_dag: dict[str, list[dict]] = {}

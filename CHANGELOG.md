@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-31
+
+> **Renamed:** the distribution is now **`airflow-plugin-watchdog`** (was `airflow-provider-watchdog`). Install with `pip install airflow-plugin-watchdog`. The import path is unchanged (`import airflow_watchdog`).
+
+### Fixed
+
+- **`RuntimeError: Direct database access via the ORM is not allowed in Airflow 3.0`** — the monitor DAG's task ran the detector SQL through `airflow.settings.Session`, but Airflow 3 isolates task/worker execution from the metadata DB (AIP-72), so every run failed. Detection now runs on the API-server side, where direct metadata-DB access is sanctioned.
+
+### Changed
+
+- **Detection moved off the worker and onto the API server.** A background scheduler, started by the plugin's FastAPI lifespan, runs the detectors every `schedule_interval_minutes` inside the API-server process — the same place, and the same DB access, the dashboard already used. The synchronous detector SQL runs on a dedicated daemon thread so it never blocks the API server's event loop. Across multiple API-server replicas/workers, a database advisory lock (Postgres/MySQL) plus a last-run check ensures only one cycle runs per interval.
+- **No monitoring DAG to deploy.** Installing the plugin is now sufficient; there is no `dags_folder` shim step. `schedule_interval_minutes` is read each cycle, so cadence changes apply without a restart (previously required a scheduler restart).
+- Dashboard alert results now come from the `watchdog_last_results` Variable (written by the scheduler, capped at 50 most-severe alerts) instead of the monitor DAG's XCom.
+- `exclude_dags` no longer force-includes the (now-removed) `airflow_watchdog_monitor` DAG; it defaults to `[]` and is normalized to a sorted, de-duplicated list.
+
+### Removed
+
+- The `airflow_watchdog_monitor` DAG (`airflow_watchdog/dag.py`) and the `example_dags/watchdog_monitor.py` shim. Detection no longer runs as a DAG task, so it no longer appears in Airflow's DAG/run list — its activity is visible in the dashboard and the API-server logs.
+- **Provider registration.** The package is now a plain Airflow **plugin**, not a provider: `get_provider_info()` and the `apache_airflow_provider` entry point are gone. The plugin loads via the `airflow.plugins` entry point (the registration that already did the work). It no longer appears in Airflow's Providers list — look under Plugins instead.
+
 ## [0.5.0] - 2026-05-30
 
 ### Fixed

@@ -16,7 +16,7 @@ Example Variable value (set via UI or CLI):
         "deadline_multiplier": 2.0,
         "stuck_multiplier": 2.0,
         "schedule_iqr_multiplier": 1.5,
-        "exclude_dags": ["airflow_watchdog_monitor"],
+        "exclude_dags": [],
         "disable_detectors": [],
         "dag_overrides": {"my_dag": {"disable_detectors": ["schedule_anomaly"]}},
         "alert_emails": [],
@@ -56,8 +56,8 @@ _DEFAULTS: dict[str, Any] = {
     "stuck_multiplier": 2.0,
     # Schedule anomaly: IQR multiplier for start/end time-of-day fences
     "schedule_iqr_multiplier": 1.5,
-    # DAGs to skip (always excludes the watchdog DAG itself)
-    "exclude_dags": ["airflow_watchdog_monitor"],
+    # DAGs to skip during detection
+    "exclude_dags": [],
     # Detectors to disable globally (by AlertType value)
     "disable_detectors": [],
     # Per-DAG overrides: {"dag_id": {"disable_detectors": [...], ...}}
@@ -118,10 +118,8 @@ def load_config() -> WatchdogConfig:
 
     merged = {**_DEFAULTS, **overrides}
 
-    # Ensure the watchdog's own DAG is always excluded
-    excluded = set(merged["exclude_dags"])
-    excluded.add("airflow_watchdog_monitor")
-    merged["exclude_dags"] = sorted(excluded)
+    # Normalize exclude_dags to a sorted, de-duplicated list.
+    merged["exclude_dags"] = sorted(set(merged["exclude_dags"]))
 
     return WatchdogConfig(
         **{k: v for k, v in merged.items() if k in WatchdogConfig.__dataclass_fields__}
