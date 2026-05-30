@@ -8,7 +8,7 @@
 
 A lightweight, zero-dependency Airflow provider that monitors DAG and task health by querying the metadata database.
 
-No Prometheus. No Grafana. No Datadog. Just `pip install` and go.
+No Prometheus. No Grafana. No Datadog. Just `pip install`, drop in one DAG file, and go.
 
 ## What it detects
 
@@ -32,10 +32,23 @@ No Prometheus. No Grafana. No Datadog. Just `pip install` and go.
 pip install airflow-provider-watchdog
 ```
 
-That's it. The provider auto-registers:
+This registers the **`/watchdog/` dashboard**, accessible from the Airflow UI under Browse → Watchdog (no extra steps — it loads via the provider's plugin entry point).
 
-1. An **`airflow_watchdog_monitor` DAG** that runs every 30 minutes (configurable)
-2. A **`/watchdog/` dashboard** accessible from the Airflow UI under Browse → Watchdog
+### Enable the monitor DAG
+
+Airflow does not auto-discover DAGs that live inside provider packages, so add a
+one-line shim to your `dags_folder` (default `$AIRFLOW_HOME/dags/`) to expose the
+**`airflow_watchdog_monitor` DAG** (runs every 30 minutes, configurable):
+
+```python
+# $AIRFLOW_HOME/dags/watchdog_monitor.py
+from airflow_watchdog.dag import dag  # noqa: F401
+```
+
+A ready-to-copy version lives at [`example_dags/watchdog_monitor.py`](example_dags/watchdog_monitor.py).
+
+After installing, **restart the scheduler and the API server** so the plugin and
+DAG are picked up.
 
 ## Configuration
 
@@ -148,13 +161,57 @@ permission to edit Airflow Variables — enforced through Airflow's auth manager
 
 ## Alerting
 
-Alerts are dispatched through five channels:
+Alerts are dispatched through five channels. Only the task log is on by default —
+every other channel stays silent until you set the matching field in
+`watchdog_config`:
 
-1. **Airflow task logs** — always on, visible in the `airflow_watchdog_monitor` DAG run logs
-2. **Email** — via Airflow's built-in `send_email` (requires SMTP config in `airflow.cfg`)
-3. **Slack** — via incoming webhook (set `alert_slack_webhook` in config)
-4. **MS Teams** — via incoming webhook with Adaptive Card (set `alert_teams_webhook` in config)
-5. **Discord** — via incoming webhook (set `alert_discord_webhook` in config)
+| Channel | Config field | Default |
+|---|---|---|
+| **Airflow task logs** | _(none)_ | **always on** — visible in the `airflow_watchdog_monitor` DAG run logs |
+| **Email** | `alert_emails` | off — also requires Airflow SMTP (see below) |
+| **Slack** | `alert_slack_webhook` | off |
+| **MS Teams** (Adaptive Card) | `alert_teams_webhook` | off |
+| **Discord** | `alert_discord_webhook` | off |
+
+Webhook channels need no extra setup — paste the incoming-webhook URL into the
+corresponding field and you're done.
+
+### Email requires Airflow SMTP
+
+Email is **two-part**: Watchdog only decides *who* to notify (`alert_emails`); the
+actual sending goes through Airflow's own `airflow.utils.email.send_email`, which
+reads Airflow's `[smtp]` settings. So filling in `alert_emails` alone is not
+enough — you must also configure SMTP on the Airflow side.
+
+1. **Tell Watchdog who to email** — in the `watchdog_config` Variable:
+
+   ```json
+   { "alert_emails": ["team@example.com"] }
+   ```
+
+2. **Configure SMTP in Airflow** — via `airflow.cfg`:
+
+   ```ini
+   [smtp]
+   smtp_host = smtp.example.com
+   smtp_starttls = True
+   smtp_port = 587
+   smtp_user = alerts@example.com
+   smtp_password = <app-password>
+   smtp_mail_from = alerts@example.com
+   ```
+
+   …or the equivalent environment variables (`AIRFLOW__SMTP__SMTP_HOST`, etc.).
+   Some Airflow 3 deployments use an SMTP **Connection** (`smtp_default`) instead
+   of `airflow.cfg` — configure it under Admin → Connections in that case.
+
+> **Fail-soft:** delivery failures never fail the DAG. If a channel is
+> misconfigured (e.g. SMTP not set up, or a bad webhook URL), the run still
+> succeeds and the error is logged in the `airflow_watchdog_monitor` task log
+> (`Failed to send watchdog email` / `… Slack notification`, etc.). If you
+> configured a channel but see nothing, check that log first. Also note alerts
+> are only dispatched when there's something to report — a clean run sends
+> nothing.
 
 ## Development
 

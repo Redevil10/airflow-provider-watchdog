@@ -15,7 +15,7 @@ Install:
     pip install airflow-provider-watchdog
 """
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 
 def get_provider_info() -> dict:
@@ -27,5 +27,13 @@ def get_provider_info() -> dict:
             " — runtime anomalies, failure spikes, missed deadlines, stuck tasks."
         ),
         "versions": [__version__],
-        "dags": ["airflow_watchdog.dag"],
+        # Register the FastAPI dashboard / nav link. This is the only mechanism
+        # by which Airflow 3 discovers a provider's AirflowPlugin — there is no
+        # auto-discovery of plugin classes from installed packages.
+        "plugins": [
+            {
+                "name": "watchdog",
+                "plugin-class": "airflow_watchdog.plugin.WatchdogPlugin",
+            }
+        ],
     }
