@@ -10,6 +10,16 @@ A lightweight, zero-dependency Airflow plugin that monitors DAG and task health 
 
 No Prometheus. No Grafana. No Datadog. No DAG to deploy. Just `pip install` and go.
 
+## Screenshots
+
+> 📸 _Placeholder — add `docs/dashboard.png` and `docs/config.png`, then uncomment the block below._
+
+<!--
+| Dashboard | Configuration |
+|---|---|
+| ![Watchdog dashboard](docs/dashboard.png) | ![Watchdog configuration](docs/config.png) |
+-->
+
 ## What it detects
 
 | Detector | What it catches | How it works |
@@ -19,6 +29,18 @@ No Prometheus. No Grafana. No Datadog. No DAG to deploy. Just `pip install` and 
 | **Missed deadline** | DAG runs taking too long | Flags running DAGs exceeding N× their median duration |
 | **Stuck task** | Zombie or hung tasks | Flags tasks in `running` state beyond N× their historical max |
 | **Schedule anomaly** | Tasks starting or ending at unusual times | IQR-based outlier detection on time-of-day (handles midnight wraparound) |
+
+## Quick start
+
+```bash
+pip install airflow-plugin-watchdog
+```
+
+1. **Install** (above), then **restart the Airflow API server** so the plugin and its background scheduler load.
+2. **Open the dashboard** — click **Watchdog** in the Airflow navbar (under Browse), or go to `/watchdog/`.
+3. **Tune it (optional)** — click **Configuration** on the dashboard to toggle detectors, adjust thresholds, and add alert destinations.
+
+That's it — no DAG to deploy, no extra services. Detection runs every 30 minutes by default and works out of the box.
 
 ## Requirements
 
@@ -47,19 +69,30 @@ picked up. By default detection runs every 30 minutes (configurable — see belo
 
 ## Configuration
 
-Set an Airflow Variable called `watchdog_config` with a JSON object. All fields are optional — sensible defaults apply.
+All settings live in a single Airflow Variable, `watchdog_config` (a JSON object). All fields are optional — sensible defaults apply. There are two equivalent ways to edit it:
+
+- **Watchdog Configuration page** (recommended) — open the dashboard and click **Configuration**. It's a structured, validated editor for the same Variable, organized into three tabs: **Detectors** (enable/disable per DAG, plus excluded DAGs), **Thresholds** (numeric tuning), and **Alerts** (emails and webhook URLs).
+- **Admin → Variables → `watchdog_config`** — edit the raw JSON by hand. Same effect, no validation.
+
+Either way the value is stored in Airflow's metadata DB (the `variable` table), read fresh each detection cycle and shared across API-server replicas. Editing either way takes effect on the next run.
+
+> **Note:** Watchdog also writes a second Variable, `watchdog_last_results` — this is *output*, not config: the scheduler overwrites it every cycle with the latest alert summary that the dashboard reads. It shows up under Admin → Variables too, but don't edit it (your changes are clobbered on the next run).
+
+The full set of `watchdog_config` fields:
 
 ```json
 {
     "schedule_interval_minutes": 30,
     "lookback_runs": 20,
     "runtime_iqr_multiplier": 1.5,
+    "runtime_min_deviation_secs": 5.0,
     "failure_window_runs": 10,
     "failure_baseline_runs": 50,
     "failure_spike_ratio": 2.0,
     "deadline_multiplier": 2.0,
     "stuck_multiplier": 2.0,
     "schedule_iqr_multiplier": 1.5,
+    "schedule_min_deviation_minutes": 5.0,
     "exclude_dags": [],
     "disable_detectors": [],
     "dag_overrides": {
@@ -81,12 +114,14 @@ Set an Airflow Variable called `watchdog_config` with a JSON object. All fields 
 | `schedule_interval_minutes` | `30` | How often detection runs (read each cycle — changes apply without a restart) |
 | `lookback_runs` | `20` | Number of recent runs used for statistical baselines |
 | `runtime_iqr_multiplier` | `1.5` | IQR multiplier for runtime anomaly fences |
+| `runtime_min_deviation_secs` | `5.0` | Minimum absolute duration change before a runtime anomaly fires (suppresses noise from steady/very short tasks) |
 | `failure_window_runs` | `10` | Recent window size for failure rate calculation |
 | `failure_baseline_runs` | `50` | Historical baseline size for failure rate comparison |
 | `failure_spike_ratio` | `2.0` | Alert when recent rate exceeds this × baseline rate |
 | `deadline_multiplier` | `2.0` | Alert when DAG run exceeds this × median duration |
 | `stuck_multiplier` | `2.0` | Alert when task exceeds this × historical max duration |
 | `schedule_iqr_multiplier` | `1.5` | IQR multiplier for start/end time-of-day fences |
+| `schedule_min_deviation_minutes` | `5.0` | Minimum deviation from the median time-of-day before a schedule anomaly fires (suppresses sub-minute jitter) |
 | `exclude_dags` | `[]` | DAG IDs to skip during detection |
 | `disable_detectors` | `[]` | Detector names to disable globally (e.g. `["schedule_anomaly"]`) |
 | `dag_overrides` | `{}` | Per-DAG overrides: `{"dag_id": {"disable_detectors": [...]}}` |

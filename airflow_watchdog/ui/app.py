@@ -263,6 +263,22 @@ def _get_config_data() -> dict:
         data["config"] = {
             "disable_detectors": config.disable_detectors,
             "dag_overrides": config.dag_overrides,
+            "schedule_interval_minutes": config.schedule_interval_minutes,
+            "lookback_runs": config.lookback_runs,
+            "runtime_iqr_multiplier": config.runtime_iqr_multiplier,
+            "runtime_min_deviation_secs": config.runtime_min_deviation_secs,
+            "failure_window_runs": config.failure_window_runs,
+            "failure_baseline_runs": config.failure_baseline_runs,
+            "failure_spike_ratio": config.failure_spike_ratio,
+            "deadline_multiplier": config.deadline_multiplier,
+            "stuck_multiplier": config.stuck_multiplier,
+            "schedule_iqr_multiplier": config.schedule_iqr_multiplier,
+            "schedule_min_deviation_minutes": config.schedule_min_deviation_minutes,
+            "exclude_dags": config.exclude_dags,
+            "alert_emails": config.alert_emails,
+            "alert_slack_webhook": config.alert_slack_webhook,
+            "alert_teams_webhook": config.alert_teams_webhook,
+            "alert_discord_webhook": config.alert_discord_webhook,
         }
 
         # Get all DAGs
@@ -281,8 +297,55 @@ def _get_config_data() -> dict:
     return data
 
 
-def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -> dict:
-    """Update the disable_detectors and dag_overrides fields in the Airflow Variable."""
+# Editable scalar/list params (everything besides disable_detectors /
+# dag_overrides), grouped by how they are validated.
+_NUMERIC_PARAMS = frozenset(
+    {
+        "schedule_interval_minutes",
+        "lookback_runs",
+        "runtime_iqr_multiplier",
+        "runtime_min_deviation_secs",
+        "failure_window_runs",
+        "failure_baseline_runs",
+        "failure_spike_ratio",
+        "deadline_multiplier",
+        "stuck_multiplier",
+        "schedule_iqr_multiplier",
+        "schedule_min_deviation_minutes",
+    }
+)
+_STRING_LIST_PARAMS = frozenset({"exclude_dags", "alert_emails"})
+_NULLABLE_STRING_PARAMS = frozenset(
+    {"alert_slack_webhook", "alert_teams_webhook", "alert_discord_webhook"}
+)
+
+
+def _validate_param(key: str, value) -> str | None:
+    """Return an error message for an invalid param value, or None if valid."""
+    if key in _NUMERIC_PARAMS:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            return f"{key} must be a non-negative number"
+    elif key in _STRING_LIST_PARAMS:
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return f"{key} must be a list of strings"
+    elif key in _NULLABLE_STRING_PARAMS:
+        if value is not None and not isinstance(value, str):
+            return f"{key} must be a string or null"
+    else:
+        return f"Unknown parameter: {key}"
+    return None
+
+
+def _save_config(
+    disable_detectors: list[str],
+    dag_overrides: dict[str, dict],
+    params: dict | None = None,
+) -> dict:
+    """Update the editable fields in the Airflow Variable.
+
+    ``params`` carries the scalar/list config fields (thresholds, multipliers,
+    exclude_dags, alert destinations); only keys present are changed.
+    """
     try:
         from airflow.models import Variable
 
@@ -290,28 +353,26 @@ def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -
         from airflow_watchdog.detectors import AlertType
 
         valid_names = {e.value for e in AlertType}
+        params = params or {}
+
+        # Validate scalar/list params
+        for key, value in params.items():
+            err = _validate_param(key, value)
+            if err:
+                return {"success": False, "error": err}
 
         # Validate disable_detectors entries
         for name in disable_detectors:
             if name not in valid_names:
-                return {
-                    "success": False,
-                    "error": f"Unknown detector: {name}",
-                }
+                return {"success": False, "error": f"Unknown detector: {name}"}
 
         # Validate dag_overrides structure
         for dag_id, cfg in dag_overrides.items():
             if not isinstance(cfg, dict):
-                return {
-                    "success": False,
-                    "error": f"Invalid override for {dag_id}",
-                }
+                return {"success": False, "error": f"Invalid override for {dag_id}"}
             for name in cfg.get("disable_detectors", []):
                 if name not in valid_names:
-                    return {
-                        "success": False,
-                        "error": f"Unknown detector in {dag_id}: {name}",
-                    }
+                    return {"success": False, "error": f"Unknown detector in {dag_id}: {name}"}
 
         raw = Variable.get(_VARIABLE_KEY, default_var="{}")
         current = json.loads(raw) if isinstance(raw, str) else raw
@@ -321,6 +382,7 @@ def _save_config(disable_detectors: list[str], dag_overrides: dict[str, dict]) -
         current["dag_overrides"] = {
             dag_id: cfg for dag_id, cfg in dag_overrides.items() if cfg.get("disable_detectors")
         }
+        current.update(params)
 
         Variable.set(_VARIABLE_KEY, json.dumps(current))
         return {"success": True}
@@ -360,5 +422,6 @@ async def api_config_save(request: Request) -> JSONResponse:
     result = _save_config(
         disable_detectors=body.get("disable_detectors", []),
         dag_overrides=body.get("dag_overrides", {}),
+        params=body.get("params"),
     )
     return JSONResponse(content=result)

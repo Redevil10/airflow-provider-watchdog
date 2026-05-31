@@ -342,6 +342,79 @@ class TestConfigEndpoints:
         saved = json.loads(saved_json)
         assert "etl" not in saved.get("dag_overrides", {})
 
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save_persists_params(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        payload = {
+            "disable_detectors": [],
+            "dag_overrides": {},
+            "params": {
+                "runtime_min_deviation_secs": 12.5,
+                "schedule_min_deviation_minutes": 8,
+                "exclude_dags": ["legacy_etl"],
+                "alert_emails": ["team@example.com"],
+                "alert_slack_webhook": "https://hooks.slack.com/x",
+                "alert_teams_webhook": None,
+            },
+        }
+        resp = client.post("/api/config", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        saved = json.loads(mock_variable.set.call_args[0][1])
+        assert saved["runtime_min_deviation_secs"] == 12.5
+        assert saved["schedule_min_deviation_minutes"] == 8
+        assert saved["exclude_dags"] == ["legacy_etl"]
+        assert saved["alert_emails"] == ["team@example.com"]
+        assert saved["alert_slack_webhook"] == "https://hooks.slack.com/x"
+        assert saved["alert_teams_webhook"] is None
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save_rejects_negative_threshold(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        payload = {
+            "disable_detectors": [],
+            "dag_overrides": {},
+            "params": {"runtime_min_deviation_secs": -1},
+        }
+        resp = client.post("/api/config", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+        mock_variable.set.assert_not_called()
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save_rejects_unknown_param(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        payload = {
+            "disable_detectors": [],
+            "dag_overrides": {},
+            "params": {"not_a_real_param": 1},
+        }
+        resp = client.post("/api/config", json=payload)
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+        mock_variable.set.assert_not_called()
+
 
 # ── Authentication tests ───────────────────────────────────────────────────────
 

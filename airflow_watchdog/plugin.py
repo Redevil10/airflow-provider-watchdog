@@ -22,3 +22,17 @@ class WatchdogPlugin(AirflowPlugin):
             "name": "Watchdog",
         }
     ]
+    # Navbar link to the mounted dashboard. ``fastapi_apps`` only mounts the app;
+    # Airflow 3 builds nav entries from ``external_views``. Without this, the
+    # dashboard is reachable by URL but has no menu item.
+    external_views = [
+        {
+            "name": "Watchdog",
+            "href": "/watchdog/",
+            # ``url_route`` is required: Airflow's UI-plugin loader silently
+            # drops any external view without one, so the nav link won't appear.
+            "url_route": "watchdog",
+            "destination": "nav",
+            "category": "Browse",
+        }
+    ]

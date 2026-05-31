@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-05-31
+
+### Fixed
+
+- **Runtime/schedule detectors no longer fire on trivial deltas when history has near-zero variance.** A task that ran at a near-constant duration or start time produced a collapsed IQR fence (`lower == upper`), so a sub-second runtime change or sub-minute timing jitter was flagged as an anomaly (e.g. `Latest run 0.3s is faster than expected (median 0.4s)` or `Task start time 18:30 is later than expected (fence [18:30, 18:30])`). Both detectors now require a minimum absolute deviation before alerting, configurable via `runtime_min_deviation_secs` (default 5s) and `schedule_min_deviation_minutes` (default 5min). Genuine spikes on otherwise-steady history still alert.
+
+### Added
+
+- **A "Watchdog" link now appears in the Airflow navbar** (under Browse). The plugin previously only mounted the dashboard app, so it had no menu item and could only be reached by typing the `/watchdog/` URL; it now registers an `external_views` entry. (Airflow silently drops external views without a `url_route`, so one is included.)
+- The dashboard now shows the **task name** alongside task-level alerts (runtime, stuck task, schedule anomaly), so it's clear which task is affected when a DAG has many. DAG-level alerts (failure spike, missed deadline) are unchanged.
+- **The config page now edits the full `watchdog_config` from the UI**, organized into three tabs: **Detectors** (the enable/disable grid plus `exclude_dags`), **Thresholds** (all numeric tuning — intervals, lookback, IQR multipliers, failure params, deadline/stuck multipliers, and the min-deviation floors), and **Alerts** (notification emails and the Slack/Teams/Discord webhook URLs). Previously only detector toggles were editable; every other parameter required editing the Airflow Variable by hand.
+
 ## [0.6.1] - 2026-05-31
 
 ### Fixed
