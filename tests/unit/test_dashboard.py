@@ -405,6 +405,52 @@ class TestConfigEndpoints:
         assert _validate_param("runtime_min_deviation_secs", float("-inf")) is not None
         assert _validate_param("runtime_min_deviation_secs", 5.0) is None
 
+    def test_validate_param_type_errors(self):
+        from airflow_watchdog.ui.app import _validate_param
+
+        # string-list params must be lists of strings
+        assert _validate_param("exclude_dags", "not_a_list") is not None
+        assert _validate_param("exclude_dags", [1, 2]) is not None
+        assert _validate_param("exclude_dags", ["ok"]) is None
+        # nullable-string params must be str or None
+        assert _validate_param("alert_slack_webhook", 123) is not None
+        assert _validate_param("alert_slack_webhook", None) is None
+        assert _validate_param("alert_slack_webhook", "https://x") is None
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save_rejects_invalid_detectors(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        for payload in (
+            {"disable_detectors": ["bogus"], "dag_overrides": {}},
+            {"disable_detectors": [], "dag_overrides": {"d": "not_a_dict"}},
+            {"disable_detectors": [], "dag_overrides": {"d": {"disable_detectors": ["bogus"]}}},
+        ):
+            resp = client.post("/api/config", json=payload)
+            assert resp.status_code == 200
+            assert resp.json()["success"] is False
+        mock_variable.set.assert_not_called()
+
+    @pytest.mark.usefixtures("_mock_airflow_with_config")
+    def test_api_config_save_handles_storage_error(self, _mock_airflow_with_config):
+        _, mock_variable = _mock_airflow_with_config
+        mock_variable.set.side_effect = Exception("db down")
+
+        from fastapi.testclient import TestClient
+
+        from airflow_watchdog.ui.app import watchdog_app
+
+        client = TestClient(watchdog_app)
+        resp = client.post("/api/config", json={"disable_detectors": [], "dag_overrides": {}})
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is False
+
     @pytest.mark.usefixtures("_mock_airflow_with_config")
     def test_api_config_save_rejects_unknown_param(self, _mock_airflow_with_config):
         _, mock_variable = _mock_airflow_with_config
