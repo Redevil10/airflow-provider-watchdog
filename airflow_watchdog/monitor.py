@@ -78,9 +78,7 @@ def run_detection(config: WatchdogConfig | None = None) -> dict:
     if stale:
         import dataclasses
 
-        config = dataclasses.replace(
-            config, exclude_dags=sorted(set(config.exclude_dags) | stale)
-        )
+        config = dataclasses.replace(config, exclude_dags=sorted(set(config.exclude_dags) | stale))
 
     all_alerts: list[Alert] = []
 

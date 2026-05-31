@@ -10,9 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 
-def seed_dag(
-    session, dag_id: str, *, is_paused: bool = False, is_stale: bool = False
-) -> None:
+def seed_dag(session, dag_id: str, *, is_paused: bool = False, is_stale: bool = False) -> None:
     from airflow.models.dag import DagModel
 
     session.execute(

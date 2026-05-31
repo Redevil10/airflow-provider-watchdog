@@ -268,9 +268,7 @@ def _get_config_data() -> dict:
         # Get all DAGs
         from sqlalchemy import text
 
-        dag_query = text(
-            "SELECT dag_id FROM dag WHERE is_stale = false ORDER BY dag_id"
-        )
+        dag_query = text("SELECT dag_id FROM dag WHERE is_stale = false ORDER BY dag_id")
         dag_rows = session.execute(dag_query).fetchall()
         data["dags"] = [row.dag_id for row in dag_rows]
 

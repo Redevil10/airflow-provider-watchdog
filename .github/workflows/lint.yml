@@ -24,13 +24,10 @@ jobs:
         run: uv lock --check
 
       - name: Run ruff lint
-        run: uvx ruff check --extend-select=I
+        run: uv run --extra dev ruff check --extend-select=I
 
       - name: Run ruff format
-        run: uvx ruff format --check --diff
-
-      - name: Install dependencies
-        run: uv sync
+        run: uv run --extra dev ruff format --check --diff
 
       - name: Run type check
-        run: uvx ty check airflow_watchdog
+        run: uv run --extra dev ty check airflow_watchdog
