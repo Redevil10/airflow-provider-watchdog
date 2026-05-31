@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-05-31
+
+### Fixed
+
+- **The navbar "Watchdog" link broke under a base-path deployment.** Airflow embeds an external view by putting its `href` straight into an iframe `src` without prepending the API base path, so on an instance served under a sub-path (e.g. behind `/airflow`) the link resolved to `/watchdog/` — which redirected to the Airflow home page instead of the dashboard. The link's `href` is now built from `[api] base_url`, so it resolves correctly whether Airflow is served at the root or under a sub-path.
+
+### Added
+
+- README screenshots of the dashboard and the three configuration tabs.
+
 ## [0.6.2] - 2026-05-31
 
 ### Fixed

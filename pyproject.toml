@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "airflow-plugin-watchdog"
-version = "0.6.2"
+version = "0.6.3"
 description = "A lightweight, zero-dependency Airflow plugin that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, stuck tasks, and schedule anomalies."
 readme = "README.md"
 license = "Apache-2.0"

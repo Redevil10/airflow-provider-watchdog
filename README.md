@@ -12,13 +12,16 @@ No Prometheus. No Grafana. No Datadog. No DAG to deploy. Just `pip install` and 
 
 ## Screenshots
 
-> 📸 _Placeholder — add `docs/dashboard.png` and `docs/config.png`, then uncomment the block below._
+DAG health at a glance — problems sorted to the top, with each task-level alert labelled by the offending task:
 
-<!--
-| Dashboard | Configuration |
-|---|---|
-| ![Watchdog dashboard](docs/dashboard.png) | ![Watchdog configuration](docs/config.png) |
--->
+![Watchdog dashboard](docs/dashboard.png)
+
+The **Configuration** page edits the entire `watchdog_config` from the UI — no hand-editing the Airflow Variable — across three tabs:
+
+| Detectors | Thresholds | Alerts |
+|:---:|:---:|:---:|
+| ![Detectors tab](docs/config_detectors.png) | ![Thresholds tab](docs/config_thresholds.png) | ![Alerts tab](docs/config_alerts.png) |
+| Enable/disable per DAG + excluded DAGs | Numeric detection tuning | Email &amp; webhook destinations |
 
 ## What it detects
 

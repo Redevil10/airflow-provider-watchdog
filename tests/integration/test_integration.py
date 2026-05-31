@@ -239,8 +239,10 @@ class TestPluginWiring:
         plugins_manager._get_ui_plugins.cache_clear()
         external_views, _ = plugins_manager._get_ui_plugins()
 
-        hrefs = [v.get("href") for v in external_views]
-        assert "/watchdog/" in hrefs, f"watchdog nav link not surfaced: {external_views}"
+        hrefs = [v.get("href") or "" for v in external_views]
+        assert any(h.endswith("/watchdog/") for h in hrefs), (
+            f"watchdog nav link not surfaced: {external_views}"
+        )
 
     def test_scheduler_starts_with_app_lifespan(self):
         # The detection scheduler is started by the plugin app's FastAPI
