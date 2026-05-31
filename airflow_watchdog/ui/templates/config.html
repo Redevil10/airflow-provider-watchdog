@@ -255,6 +255,84 @@
             font-size: 0.82rem;
             color: var(--text-muted);
         }
+
+        .threshold-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+        }
+
+        .threshold-row:last-child { border-bottom: none; }
+
+        .num-input {
+            width: 120px;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 0.85rem;
+            outline: none;
+        }
+
+        .num-input:focus { border-color: var(--blue); }
+
+        .num-input.wide {
+            width: 100%;
+            max-width: 440px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tab {
+            padding: 10px 18px;
+            border: none;
+            background: none;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab:hover { color: var(--text); }
+
+        .tab.active {
+            color: var(--blue);
+            border-bottom-color: var(--blue);
+            font-weight: 600;
+        }
+
+        .text-area {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.82rem;
+            outline: none;
+            resize: vertical;
+        }
+
+        .text-area:focus { border-color: var(--blue); }
+
+        .field-label {
+            display: block;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
     </style>
 </head>
 <body>
@@ -263,21 +341,81 @@
         <a class="nav-link" href="./">&larr; Back to Dashboard</a>
     </div>
 
-    <div class="table-container">
-        <div class="section-title">Detector Enable / Disable</div>
-        <div class="section-subtitle">
-            Toggle detectors on or off globally or per DAG.
-            Green = enabled, grey = disabled. Changes take effect on the next watchdog run.
+    <div class="tabs">
+        <button class="tab active" id="tab-btn-detectors" onclick="switchTab('detectors')">Detectors</button>
+        <button class="tab" id="tab-btn-thresholds" onclick="switchTab('thresholds')">Thresholds</button>
+        <button class="tab" id="tab-btn-alerts" onclick="switchTab('alerts')">Alerts</button>
+    </div>
+
+    <!-- Detectors tab: what gets monitored -->
+    <div class="tab-panel" id="panel-detectors">
+        <div class="table-container">
+            <div class="section-title">Detector Enable / Disable</div>
+            <div class="section-subtitle">
+                Toggle detectors on or off globally or per DAG.
+                Green = enabled, grey = disabled. Changes take effect on the next watchdog run.
+            </div>
+            <div class="toolbar">
+                <input type="text" class="search-box" id="dagSearch" placeholder="Filter DAGs...">
+                <span class="dag-count" id="dagCount"></span>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
         </div>
-        <div class="toolbar">
-            <input type="text" class="search-box" id="dagSearch" placeholder="Filter DAGs...">
-            <span class="dag-count" id="dagCount"></span>
+
+        <div class="table-container">
+            <div class="section-title">Excluded DAGs</div>
+            <div class="section-subtitle">
+                DAG IDs to skip entirely (no detector runs against them). One per line.
+            </div>
+            <div style="padding: 16px 20px;">
+                <textarea id="excludeDags" class="text-area" rows="5"
+                    placeholder="one_dag_id_per_line" oninput="updateDirty()"></textarea>
+            </div>
         </div>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead id="tableHead"></thead>
-                <tbody id="tableBody"></tbody>
-            </table>
+    </div>
+
+    <!-- Thresholds tab: numeric detection tuning -->
+    <div class="tab-panel" id="panel-thresholds" style="display: none;">
+        <div class="table-container">
+            <div class="section-title">Detection Thresholds &amp; Tuning</div>
+            <div class="section-subtitle">
+                Numeric parameters controlling how sensitive detection is.
+                Changes take effect on the next watchdog run.
+            </div>
+            <div id="numericParams"></div>
+        </div>
+    </div>
+
+    <!-- Alerts tab: notification destinations -->
+    <div class="tab-panel" id="panel-alerts" style="display: none;">
+        <div class="table-container">
+            <div class="section-title">Alert Destinations</div>
+            <div class="section-subtitle">
+                Where alerts are delivered. These are stored in the <code>watchdog_config</code>
+                Variable and are visible to anyone with config access &mdash; treat webhook URLs as secrets.
+            </div>
+            <div style="padding: 16px 20px;">
+                <label class="field-label" for="alertEmails">Email addresses (one per line)</label>
+                <textarea id="alertEmails" class="text-area" rows="3"
+                    placeholder="team@example.com" oninput="updateDirty()"></textarea>
+            </div>
+            <div class="threshold-row">
+                <label for="alert_slack_webhook">Slack webhook URL</label>
+                <input type="text" id="alert_slack_webhook" class="num-input wide" oninput="updateDirty()">
+            </div>
+            <div class="threshold-row">
+                <label for="alert_teams_webhook">Teams webhook URL</label>
+                <input type="text" id="alert_teams_webhook" class="num-input wide" oninput="updateDirty()">
+            </div>
+            <div class="threshold-row">
+                <label for="alert_discord_webhook">Discord webhook URL</label>
+                <input type="text" id="alert_discord_webhook" class="num-input wide" oninput="updateDirty()">
+            </div>
         </div>
     </div>
 
@@ -292,6 +430,26 @@
         const detectors = DATA.detector_names || [];
         const dags = DATA.dags || [];
 
+        // Numeric tuning params: [config key, label]. Rendered on the Thresholds tab.
+        const NUMERIC_PARAMS = [
+            ["schedule_interval_minutes", "Schedule interval (minutes)"],
+            ["lookback_runs", "Lookback runs"],
+            ["runtime_iqr_multiplier", "Runtime IQR multiplier"],
+            ["runtime_min_deviation_secs", "Runtime min deviation (seconds)"],
+            ["failure_window_runs", "Failure window runs"],
+            ["failure_baseline_runs", "Failure baseline runs"],
+            ["failure_spike_ratio", "Failure spike ratio"],
+            ["deadline_multiplier", "Deadline multiplier"],
+            ["stuck_multiplier", "Stuck multiplier"],
+            ["schedule_iqr_multiplier", "Schedule IQR multiplier"],
+            ["schedule_min_deviation_minutes", "Schedule min deviation (minutes)"],
+        ];
+        const WEBHOOK_PARAMS = [
+            "alert_slack_webhook",
+            "alert_teams_webhook",
+            "alert_discord_webhook",
+        ];
+
         // State: track enabled status. true = enabled.
         let globalDisabled = new Set(DATA.config.disable_detectors || []);
         let dagOverrides = {};
@@ -299,8 +457,29 @@
             dagOverrides[dagId] = new Set(cfg.disable_detectors || []);
         }
 
-        // Snapshot for dirty checking
-        let savedState = JSON.stringify(getStatePayload());
+        let savedState = "";  // dirty-check baseline, set during init
+
+        function numInputById(id) {
+            const v = parseFloat(document.getElementById(id).value);
+            return Number.isFinite(v) ? v : null;
+        }
+
+        function linesToList(id) {
+            return document.getElementById(id).value
+                .split("\n").map(s => s.trim()).filter(s => s.length > 0);
+        }
+
+        function getParamsPayload() {
+            const params = {};
+            for (const [key] of NUMERIC_PARAMS) params[key] = numInputById("p_" + key);
+            params.exclude_dags = linesToList("excludeDags");
+            params.alert_emails = linesToList("alertEmails");
+            for (const key of WEBHOOK_PARAMS) {
+                const v = document.getElementById(key).value.trim();
+                params[key] = v === "" ? null : v;
+            }
+            return params;
+        }
 
         function getStatePayload() {
             return {
@@ -310,7 +489,33 @@
                         .filter(([, s]) => s.size > 0)
                         .map(([k, s]) => [k, { disable_detectors: Array.from(s).sort() }])
                 ),
+                params: getParamsPayload(),
             };
+        }
+
+        function renderNumericParams() {
+            document.getElementById("numericParams").innerHTML = NUMERIC_PARAMS.map(([key, label]) => `
+                <div class="threshold-row">
+                    <label for="p_${key}">${escapeHtml(label)}</label>
+                    <input type="number" min="0" step="any" id="p_${key}" class="num-input"
+                        value="${DATA.config[key]}" oninput="updateDirty()">
+                </div>`).join("");
+        }
+
+        function initParamFields() {
+            renderNumericParams();
+            document.getElementById("excludeDags").value = (DATA.config.exclude_dags || []).join("\n");
+            document.getElementById("alertEmails").value = (DATA.config.alert_emails || []).join("\n");
+            for (const key of WEBHOOK_PARAMS) {
+                document.getElementById(key).value = DATA.config[key] || "";
+            }
+        }
+
+        function switchTab(name) {
+            for (const t of ["detectors", "thresholds", "alerts"]) {
+                document.getElementById("panel-" + t).style.display = t === name ? "" : "none";
+                document.getElementById("tab-btn-" + t).classList.toggle("active", t === name);
+            }
         }
 
         function isEnabled(dagId, detector) {
@@ -456,6 +661,7 @@
             for (const [dagId, cfg] of Object.entries(DATA.config.dag_overrides || {})) {
                 dagOverrides[dagId] = new Set(cfg.disable_detectors || []);
             }
+            initParamFields();
             render();
             updateDirty();
             document.getElementById("statusMsg").textContent = "";
@@ -465,6 +671,8 @@
         document.getElementById("dagSearch").addEventListener("input", render);
 
         // Initial render
+        initParamFields();
+        savedState = JSON.stringify(getStatePayload());
         render();
         updateDirty();
     </script>

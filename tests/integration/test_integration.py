@@ -230,6 +230,18 @@ class TestPluginWiring:
         prefixes = [a.get("url_prefix") for a in apps]
         assert "/watchdog" in prefixes, f"watchdog plugin was not discovered: {prefixes}"
 
+    def test_navbar_link_surfaced_by_airflow(self):
+        # external_views feeds the Airflow 3 navbar. Airflow validates each entry
+        # and silently drops malformed ones, so go through the real UI-plugin path
+        # to prove our nav link is actually accepted and surfaced.
+        from airflow import plugins_manager
+
+        plugins_manager._get_ui_plugins.cache_clear()
+        external_views, _ = plugins_manager._get_ui_plugins()
+
+        hrefs = [v.get("href") for v in external_views]
+        assert "/watchdog/" in hrefs, f"watchdog nav link not surfaced: {external_views}"
+
     def test_scheduler_starts_with_app_lifespan(self):
         # The detection scheduler is started by the plugin app's FastAPI
         # lifespan, which Airflow runs only in the API server. Drive the lifespan

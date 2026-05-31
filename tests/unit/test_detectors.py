@@ -103,6 +103,33 @@ class TestRuntimeDetector:
         assert len(alerts) == 1
         assert alerts[0].severity == Severity.CRITICAL
 
+    def test_tiny_deviation_below_floor_suppressed(self):
+        from airflow_watchdog.detectors.runtime import detect
+
+        # Rock-steady ~0.4s history → collapsed IQR fence. Latest 0.3s is
+        # "outside" it, but the 0.1s delta is below the min-deviation floor, so
+        # it must NOT alert (this is the reported false positive).
+        rows = [SimpleNamespace(dag_id="d", task_id="t", duration=0.3, rn=1)]
+        rows += [
+            SimpleNamespace(dag_id="d", task_id="t", duration=0.4, rn=rn) for rn in range(2, 7)
+        ]
+        session = _make_session(rows)
+        assert detect(session, _default_config()) == []
+
+    def test_large_deviation_on_steady_history_still_alerts(self):
+        from airflow_watchdog.detectors.runtime import detect
+
+        # Same zero-variance history, but a genuine 10s→600s spike must still
+        # fire — the floor suppresses noise, not real regressions.
+        rows = [SimpleNamespace(dag_id="d", task_id="t", duration=600.0, rn=1)]
+        rows += [
+            SimpleNamespace(dag_id="d", task_id="t", duration=10.0, rn=rn) for rn in range(2, 7)
+        ]
+        session = _make_session(rows)
+        alerts = detect(session, _default_config())
+        assert len(alerts) == 1
+        assert "slower" in alerts[0].message
+
     def test_no_anomalies_returns_empty(self):
         from airflow_watchdog.detectors.runtime import detect
 
@@ -542,6 +569,29 @@ class TestScheduleAnomalyDetector:
         session = _make_session(rows)
         alerts = detect(session, _default_config())
         assert alerts == []
+
+    def test_subminute_jitter_below_floor_suppressed(self):
+        from airflow_watchdog.detectors.schedule import detect
+
+        # Task always starts at 18:30:00 (zero-variance history → collapsed
+        # fence). Latest at 18:30:40 is technically "outside" but only ~0.7 min
+        # off the median — below the floor, so it must NOT alert. This is the
+        # reported "18:30 is later than expected, fence [18:30, 18:30]" case.
+        base = datetime(2024, 1, 1, 18, 30, tzinfo=timezone.utc)
+
+        def row(sec, rn):
+            start = base.replace(second=sec)
+            return SimpleNamespace(
+                dag_id="d",
+                task_id="t",
+                start_date=start,
+                end_date=start + timedelta(minutes=1),
+                rn=rn,
+            )
+
+        rows = [row(40, 1)] + [row(0, rn) for rn in range(2, 8)]
+        session = _make_session(rows)
+        assert detect(session, _default_config()) == []
 
     def test_midnight_wraparound(self):
         from airflow_watchdog.detectors.schedule import detect

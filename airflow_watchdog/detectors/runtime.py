@@ -101,6 +101,10 @@ def detect(session: Session, config: WatchdogConfig) -> list[Alert]:
             continue
 
         deviation = abs(latest_duration - med)
+        # Ignore trivial deltas — a collapsed IQR fence (near-zero historical
+        # variance) otherwise flags sub-second noise as an anomaly.
+        if deviation < config.runtime_min_deviation_secs:
+            continue
         direction = "slower" if latest_duration > upper_fence else "faster"
         severity = Severity.CRITICAL if deviation > 3 * iqr else Severity.WARNING
 

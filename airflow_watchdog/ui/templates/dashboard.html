@@ -195,6 +195,15 @@
         .alert-list li.critical::before { content: "🔴"; }
         .alert-list li.warning::before { content: "🟡"; }
 
+        .alert-task {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.78rem;
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .alert-task::after { content: " · "; color: var(--text-muted); }
+
         .duration {
             font-variant-numeric: tabular-nums;
             color: var(--text-muted);
@@ -299,9 +308,14 @@
                     : d.last_run_state === "failed" ? "run-failed"
                     : d.last_run_state === "running" ? "run-running" : "";
 
-                const alertItems = (d.alerts || []).map(a =>
-                    `<li class="${escapeHtml(a.severity)}">${escapeHtml(a.message)}</li>`
-                ).join("");
+                const alertItems = (d.alerts || []).map(a => {
+                    // Task-level alerts (runtime, stuck, schedule) carry a task_id;
+                    // DAG-level alerts (failure spike, missed deadline) don't.
+                    const taskPrefix = a.task_id
+                        ? `<span class="alert-task">${escapeHtml(a.task_id)}</span>`
+                        : "";
+                    return `<li class="${escapeHtml(a.severity)}">${taskPrefix}${escapeHtml(a.message)}</li>`;
+                }).join("");
 
                 const alertsHtml = alertItems
                     ? `<ul class="alert-list">${alertItems}</ul>`

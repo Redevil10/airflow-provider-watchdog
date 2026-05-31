@@ -151,6 +151,11 @@ def detect(session: Session, config: WatchdogConfig) -> list[Alert]:
                 continue
 
             deviation = abs(latest_shifted - med)
+            # Ignore sub-minute jitter — a collapsed IQR fence (near-zero
+            # historical variance) otherwise flags a task that always starts at
+            # the same time as "later/earlier than expected".
+            if deviation < config.schedule_min_deviation_minutes:
+                continue
             direction = "later" if latest_shifted > upper else "earlier"
             severity = Severity.CRITICAL if deviation > 3 * iqr else Severity.WARNING
 

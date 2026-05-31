@@ -16,6 +16,21 @@ def test_plugin_registers_dashboard_app():
     assert apps[0]["app"] is watchdog_app
 
 
+def test_plugin_registers_navbar_link():
+    """WatchdogPlugin adds an external view so the dashboard appears in the navbar."""
+    from airflow_watchdog.plugin import WatchdogPlugin
+
+    views = WatchdogPlugin.external_views
+    assert len(views) == 1
+    view = views[0]
+    assert view["name"] == "Watchdog"
+    # Must point at the mounted app and render as a nav entry.
+    assert view["href"] == "/watchdog/"
+    assert view["destination"] == "nav"
+    # Airflow drops external views without a url_route, so it must be present.
+    assert view.get("url_route")
+
+
 def test_package_exposes_version_but_not_provider_info():
     """The package is a plain plugin: it carries a version, not provider info."""
     import airflow_watchdog
