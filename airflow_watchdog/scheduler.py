@@ -39,9 +39,12 @@ _INITIAL_DELAY = 15.0
 # Floor on the cadence so a misconfigured tiny interval can't hammer the DB.
 _MIN_INTERVAL_SECONDS = 60.0
 
-# Advisory-lock identifiers (Postgres uses a bigint key, MySQL a name).
+# Advisory-lock identifiers (Postgres uses a bigint key, MySQL a name). Both
+# just need to be stable and identical across all replicas so they contend on
+# the same lock; the MySQL name is server-global, so it is namespaced to avoid
+# colliding with other applications' GET_LOCK names.
 _PG_LOCK_KEY = 911_739_812
-_MYSQL_LOCK_NAME = "airflow_watchdog_monitor"
+_MYSQL_LOCK_NAME = "airflow_watchdog_detection"
 
 _stop_event = threading.Event()
 _thread: threading.Thread | None = None

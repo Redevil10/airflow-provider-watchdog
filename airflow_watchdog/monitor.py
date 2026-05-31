@@ -33,6 +33,23 @@ RESULTS_VARIABLE_KEY = "watchdog_last_results"
 _MAX_STORED_ALERTS = 50
 
 
+def _stale_dag_ids(session) -> set[str]:
+    """Return dag_ids whose source files are gone (``is_stale``).
+
+    These DAGs are hidden in the Airflow UI; alerting on their leftover
+    historical runs would be noise, so detectors skip them. Best-effort: on any
+    error, exclude nothing.
+    """
+    from sqlalchemy import text
+
+    try:
+        rows = session.execute(text("SELECT dag_id FROM dag WHERE is_stale = true")).fetchall()
+        return {row.dag_id for row in rows}
+    except Exception:
+        logger.exception("Could not load stale DAG list; not excluding stale DAGs")
+        return set()
+
+
 def run_detection(config: WatchdogConfig | None = None) -> dict:
     """Execute all detectors, dispatch alerts, and return a bounded summary.
 
@@ -54,6 +71,14 @@ def run_detection(config: WatchdogConfig | None = None) -> dict:
 
     assert Session is not None  # configured by Airflow at runtime
     session = Session()
+
+    # Exclude stale DAGs (source file removed; hidden in the Airflow UI) so the
+    # detectors don't alert on their leftover historical runs.
+    stale = _stale_dag_ids(session)
+    if stale:
+        import dataclasses
+
+        config = dataclasses.replace(config, exclude_dags=sorted(set(config.exclude_dags) | stale))
 
     all_alerts: list[Alert] = []
 

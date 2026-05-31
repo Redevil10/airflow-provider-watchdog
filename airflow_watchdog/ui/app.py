@@ -125,7 +125,7 @@ def _get_dashboard_data() -> dict:
             """\
             SELECT dag_id, is_paused
             FROM dag
-            WHERE dag_id != 'airflow_watchdog_monitor'
+            WHERE is_stale = false
             ORDER BY dag_id
         """
         )
@@ -139,7 +139,6 @@ def _get_dashboard_data() -> dict:
                        PARTITION BY dag_id ORDER BY start_date DESC
                    ) AS rn
             FROM dag_run
-            WHERE dag_id != 'airflow_watchdog_monitor'
         """
         )
         run_rows = session.execute(runs_query).fetchall()
@@ -269,9 +268,7 @@ def _get_config_data() -> dict:
         # Get all DAGs
         from sqlalchemy import text
 
-        dag_query = text(
-            "SELECT dag_id FROM dag WHERE dag_id != 'airflow_watchdog_monitor' ORDER BY dag_id"
-        )
+        dag_query = text("SELECT dag_id FROM dag WHERE is_stale = false ORDER BY dag_id")
         dag_rows = session.execute(dag_query).fetchall()
         data["dags"] = [row.dag_id for row in dag_rows]
 

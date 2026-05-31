@@ -10,14 +10,14 @@ from __future__ import annotations
 from datetime import datetime
 
 
-def seed_dag(session, dag_id: str, *, is_paused: bool = False) -> None:
+def seed_dag(session, dag_id: str, *, is_paused: bool = False, is_stale: bool = False) -> None:
     from airflow.models.dag import DagModel
 
     session.execute(
         DagModel.__table__.insert().values(
             dag_id=dag_id,
             is_paused=is_paused,
-            is_stale=False,
+            is_stale=is_stale,
             bundle_name="test-bundle",
             max_active_tasks=16,
             max_consecutive_failed_dag_runs=0,

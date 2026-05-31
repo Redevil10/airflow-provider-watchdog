@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-31
+
+### Fixed
+
+- **Stale DAGs no longer appear in the dashboard or trigger alerts.** DAGs whose source files have been removed (`is_stale = true`, hidden in the Airflow UI) were still listed on the dashboard/config pages and could raise alerts from their leftover historical runs. The dashboard now filters them out, and the detection runner excludes stale DAGs from all detectors. Paused DAGs are still shown and monitored.
+
+### Changed
+
+- Removed the obsolete `dag_id != 'airflow_watchdog_monitor'` filters from the dashboard/config queries (that DAG no longer exists).
+- Renamed the MySQL advisory lock from `airflow_watchdog_monitor` to `airflow_watchdog_detection` to reflect that detection no longer runs as a DAG. During a rolling upgrade old and new replicas briefly contend on different lock names, so a detection cycle may run twice in that window.
+
 ## [0.6.0] - 2026-05-31
 
 > **Renamed:** the distribution is now **`airflow-plugin-watchdog`** (was `airflow-provider-watchdog`). Install with `pip install airflow-plugin-watchdog`. The import path is unchanged (`import airflow_watchdog`).
