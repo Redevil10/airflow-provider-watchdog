@@ -494,16 +494,24 @@
         }
 
         function renderNumericParams() {
+            // No value="" here: config values are never string-interpolated into
+            // HTML. A hand-edited watchdog_config could otherwise break out of the
+            // attribute and inject markup. Values are assigned via .value below.
             document.getElementById("numericParams").innerHTML = NUMERIC_PARAMS.map(([key, label]) => `
                 <div class="threshold-row">
                     <label for="p_${key}">${escapeHtml(label)}</label>
                     <input type="number" min="0" step="any" id="p_${key}" class="num-input"
-                        value="${DATA.config[key]}" oninput="updateDirty()">
+                        oninput="updateDirty()">
                 </div>`).join("");
         }
 
         function initParamFields() {
             renderNumericParams();
+            // Assign all values via the DOM (.value), never via innerHTML, so the
+            // config page can't be an XSS vector for a tampered watchdog_config.
+            for (const [key] of NUMERIC_PARAMS) {
+                document.getElementById("p_" + key).value = DATA.config[key];
+            }
             document.getElementById("excludeDags").value = (DATA.config.exclude_dags || []).join("\n");
             document.getElementById("alertEmails").value = (DATA.config.alert_emails || []).join("\n");
             for (const key of WEBHOOK_PARAMS) {
