@@ -395,6 +395,16 @@ class TestConfigEndpoints:
         assert resp.json()["success"] is False
         mock_variable.set.assert_not_called()
 
+    def test_validate_param_rejects_non_finite_numbers(self):
+        # NaN/Infinity pass json.loads but would make json.dumps emit invalid
+        # JSON the browser can't parse, so they must be rejected.
+        from airflow_watchdog.ui.app import _validate_param
+
+        assert _validate_param("runtime_min_deviation_secs", float("nan")) is not None
+        assert _validate_param("runtime_min_deviation_secs", float("inf")) is not None
+        assert _validate_param("runtime_min_deviation_secs", float("-inf")) is not None
+        assert _validate_param("runtime_min_deviation_secs", 5.0) is None
+
     @pytest.mark.usefixtures("_mock_airflow_with_config")
     def test_api_config_save_rejects_unknown_param(self, _mock_airflow_with_config):
         _, mock_variable = _mock_airflow_with_config

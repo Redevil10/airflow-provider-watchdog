@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 from contextlib import asynccontextmanager
 
@@ -323,7 +324,14 @@ _NULLABLE_STRING_PARAMS = frozenset(
 def _validate_param(key: str, value) -> str | None:
     """Return an error message for an invalid param value, or None if valid."""
     if key in _NUMERIC_PARAMS:
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        # Reject bools and non-finite floats (NaN/Infinity): json.loads accepts
+        # them, but json.dumps would then emit invalid JSON the browser can't parse.
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
             return f"{key} must be a non-negative number"
     elif key in _STRING_LIST_PARAMS:
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
