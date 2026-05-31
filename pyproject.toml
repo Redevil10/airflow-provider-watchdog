@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "airflow-plugin-watchdog"
-version = "0.6.0"
+version = "0.6.1"
 description = "A lightweight, zero-dependency Airflow plugin that monitors DAG/task health by querying the metadata DB — runtime anomalies, failure spikes, missed deadlines, stuck tasks, and schedule anomalies."
 readme = "README.md"
 license = "Apache-2.0"
@@ -78,7 +78,7 @@ select = ["E", "F", "I", "UP"]
 testpaths = ["tests/unit"]
 pythonpath = ["."]
 # Integration tests need a real Airflow metadata DB; skip them by default and
-# run them explicitly with `pytest -m integration` (see integration.yml).
+# run them explicitly with `pytest -m integration` (see integration_test.yml).
 addopts = "-m 'not integration'"
 markers = [
     "integration: end-to-end tests against a real Airflow metadata DB",
