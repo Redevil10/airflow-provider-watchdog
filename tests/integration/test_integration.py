@@ -172,6 +172,39 @@ class TestDashboardRoundTrip:
         assert etl["alerts"][0]["task_id"] == "extract"
 
 
+# ── Stale DAG filtering (real is_stale column) ──────────────────────────────────
+
+
+class TestStaleFiltering:
+    def test_stale_dag_excluded_from_dashboard(self, clean_tables):
+        session = clean_tables
+        from airflow_watchdog.ui.app import _get_dashboard_data
+
+        seed_dag(session, "active_dag")
+        seed_dag(session, "removed_dag", is_stale=True)
+        # The stale DAG still has leftover history that the UI hides.
+        start = _now() - timedelta(minutes=5)
+        seed_dag_run(session, "removed_dag", "r1", "success", start, start + timedelta(minutes=1))
+
+        data = _get_dashboard_data()
+
+        assert "error" not in data
+        dag_ids = {d["dag_id"] for d in data["dags"]}
+        assert "active_dag" in dag_ids
+        assert "removed_dag" not in dag_ids
+
+    def test_stale_dag_ids_reads_real_column(self, clean_tables):
+        # Exercises the real ``WHERE is_stale = true`` SQL that feeds the
+        # detector-side exclude list, against the actual schema.
+        session = clean_tables
+        from airflow_watchdog.monitor import _stale_dag_ids
+
+        seed_dag(session, "active_dag")
+        seed_dag(session, "removed_dag", is_stale=True)
+
+        assert _stale_dag_ids(session) == {"removed_dag"}
+
+
 # ── Authentication enforcement (real SimpleAuthManager) ──────────────────────────
 
 

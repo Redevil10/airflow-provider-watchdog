@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 
@@ -73,7 +74,53 @@ class TestLoadResults:
         assert results["total_alerts"] == 0
 
 
+class TestStaleDagIds:
+    def test_returns_dag_ids_from_rows(self):
+        from airflow_watchdog import monitor
+
+        session = MagicMock()
+        session.execute.return_value.fetchall.return_value = [
+            SimpleNamespace(dag_id="old_etl"),
+            SimpleNamespace(dag_id="deleted_dag"),
+        ]
+        assert monitor._stale_dag_ids(session) == {"old_etl", "deleted_dag"}
+
+    def test_empty_set_on_query_error(self):
+        from airflow_watchdog import monitor
+
+        session = MagicMock()
+        session.execute.side_effect = RuntimeError("db down")
+        assert monitor._stale_dag_ids(session) == set()
+
+
 class TestRunDetection:
+    def test_stale_dags_are_added_to_exclude_dags(self):
+        from airflow_watchdog import monitor
+        from airflow_watchdog.config import WatchdogConfig
+
+        cfg = WatchdogConfig(exclude_dags=["manually_excluded"])
+        with (
+            patch.object(monitor, "_store_results"),
+            patch.object(monitor, "_stale_dag_ids", return_value={"stale_a", "stale_b"}),
+            patch("airflow_watchdog.alerting.dispatch"),
+            patch("airflow_watchdog.detectors.runtime.detect", return_value=[]) as runtime_detect,
+            patch("airflow_watchdog.detectors.failures.detect", return_value=[]),
+            patch("airflow_watchdog.detectors.deadlines.detect", return_value=[]),
+            patch("airflow_watchdog.detectors.stuck.detect", return_value=[]),
+            patch("airflow_watchdog.detectors.schedule.detect", return_value=[]),
+            patch.dict(
+                "sys.modules",
+                {"airflow": MagicMock(), "airflow.settings": MagicMock(Session=MagicMock())},
+            ),
+        ):
+            monitor.run_detection(cfg)
+
+        # Detectors receive a config whose exclude_dags merges stale + manual.
+        passed_config = runtime_detect.call_args.args[1]
+        assert set(passed_config.exclude_dags) == {"manually_excluded", "stale_a", "stale_b"}
+        # The caller's config is not mutated.
+        assert cfg.exclude_dags == ["manually_excluded"]
+
     def test_dispatches_and_stores(self):
         from airflow_watchdog import monitor
         from airflow_watchdog.config import WatchdogConfig
