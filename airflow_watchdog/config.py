@@ -189,11 +189,41 @@ def _sanitize(merged: dict[str, Any]) -> dict[str, Any]:
             logger.warning("watchdog_config: %s must be a string or null; clearing", key)
             merged[key] = None
 
-    if not isinstance(merged.get("dag_overrides"), dict):
-        logger.warning("watchdog_config: dag_overrides must be an object; using default")
-        merged["dag_overrides"] = {}
+    merged["dag_overrides"] = _sanitize_dag_overrides(merged.get("dag_overrides"))
 
     return merged
+
+
+def _sanitize_dag_overrides(value: Any) -> dict[str, dict]:
+    """Keep only well-formed per-DAG overrides.
+
+    Each entry must be an object whose ``disable_detectors`` (if present) is a
+    list of strings; anything else is dropped so it can never reach
+    ``WatchdogConfig.is_detector_enabled`` (where ``dag_cfg.get`` on a non-dict,
+    or membership against a non-list, would raise or misbehave).
+    """
+    if not isinstance(value, dict):
+        if value is not None:
+            logger.warning("watchdog_config: dag_overrides must be an object; using default")
+        return {}
+
+    clean: dict[str, dict] = {}
+    for dag_id, cfg in value.items():
+        if not isinstance(cfg, dict):
+            logger.warning(
+                "watchdog_config: dag_overrides[%r] must be an object; dropping", dag_id
+            )
+            continue
+        disabled = cfg.get("disable_detectors", [])
+        if not isinstance(disabled, list) or not all(isinstance(d, str) for d in disabled):
+            logger.warning(
+                "watchdog_config: dag_overrides[%r].disable_detectors must be a list of "
+                "strings; dropping",
+                dag_id,
+            )
+            continue
+        clean[dag_id] = {**cfg, "disable_detectors": disabled}
+    return clean
 
 
 def load_config() -> WatchdogConfig:
@@ -205,6 +235,12 @@ def load_config() -> WatchdogConfig:
         overrides = json.loads(raw) if isinstance(raw, str) else raw
     except Exception:
         logger.info("Could not read Airflow Variable '%s'; using defaults.", _VARIABLE_KEY)
+        overrides = {}
+
+    # Tolerate valid-but-non-object JSON (e.g. ``[]`` or ``"bad"`` from an
+    # out-of-band edit): only a mapping can be merged over the defaults.
+    if not isinstance(overrides, dict):
+        logger.warning("watchdog_config must be a JSON object; using defaults.")
         overrides = {}
 
     merged = {**_DEFAULTS, **overrides}
