@@ -26,7 +26,34 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from airflow_watchdog.config import _POSITIVE_NUMERIC
+
 logger = logging.getLogger(__name__)
+
+
+def _safe_json(data: dict) -> str:
+    """Serialize ``data`` for embedding inside an inline ``<script>`` block.
+
+    Escapes the HTML-significant characters so a value can't break out of the
+    script element, plus U+2028/U+2029 — valid in JSON but illegal raw in a JS
+    string literal, where they would be a SyntaxError that blanks the page.
+    """
+    return (
+        json.dumps(data)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
+
+def _render_page(template_name: str, data: dict) -> HTMLResponse:
+    """Render a UI template, substituting the JSON data blob safely."""
+    template_path = os.path.join(os.path.dirname(__file__), "templates", template_name)
+    with open(template_path) as f:
+        html_template = f.read()
+    return HTMLResponse(content=html_template.replace("{{ DATA_JSON }}", _safe_json(data)))
 
 
 @asynccontextmanager
@@ -166,8 +193,8 @@ def _get_dashboard_data() -> dict:
 
         for row in dag_rows:
             dag_alerts = alerts_by_dag.get(row.dag_id, [])
-            has_critical = any(a["severity"] == "critical" for a in dag_alerts)
-            has_warning = any(a["severity"] == "warning" for a in dag_alerts)
+            has_critical = any(a.get("severity") == "critical" for a in dag_alerts)
+            has_warning = any(a.get("severity") == "warning" for a in dag_alerts)
 
             if has_critical:
                 status = "critical"
@@ -222,19 +249,7 @@ def _get_dashboard_data() -> dict:
 @watchdog_app.get("/", dependencies=[Depends(_require_view_access)])
 async def dashboard() -> HTMLResponse:
     """Serve the watchdog dashboard."""
-    data = _get_dashboard_data()
-    template_path = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
-
-    with open(template_path) as f:
-        html_template = f.read()
-
-    # OWASP: escape HTML-significant chars using unicode escapes (valid in JS)
-    safe_json = (
-        json.dumps(data).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-    )
-    html = html_template.replace("{{ DATA_JSON }}", safe_json)
-
-    return HTMLResponse(content=html)
+    return _render_page("dashboard.html", _get_dashboard_data())
 
 
 @watchdog_app.get("/api/data", dependencies=[Depends(_require_view_access)])
@@ -326,13 +341,22 @@ def _validate_param(key: str, value) -> str | None:
     if key in _NUMERIC_PARAMS:
         # Reject bools and non-finite floats (NaN/Infinity): json.loads accepts
         # them, but json.dumps would then emit invalid JSON the browser can't parse.
+        # Counts/ratios/multipliers must be strictly positive; a zero there would
+        # silently disable a detector or flood alerts. The min-deviation floors
+        # may be zero (disables the floor), so they only have to be non-negative.
+        positive = key in _POSITIVE_NUMERIC
         if (
             isinstance(value, bool)
             or not isinstance(value, (int, float))
             or not math.isfinite(value)
             or value < 0
+            or (positive and value == 0)
         ):
-            return f"{key} must be a non-negative number"
+            return (
+                f"{key} must be a positive number"
+                if positive
+                else (f"{key} must be a non-negative number")
+            )
     elif key in _STRING_LIST_PARAMS:
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             return f"{key} must be a list of strings"
@@ -403,17 +427,7 @@ def _save_config(
 @watchdog_app.get("/config", dependencies=[Depends(_require_view_access)])
 async def config_page() -> HTMLResponse:
     """Serve the config UI page."""
-    data = _get_config_data()
-    template_path = os.path.join(os.path.dirname(__file__), "templates", "config.html")
-
-    with open(template_path) as f:
-        html_template = f.read()
-
-    safe_json = (
-        json.dumps(data).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
-    )
-    html = html_template.replace("{{ DATA_JSON }}", safe_json)
-    return HTMLResponse(content=html)
+    return _render_page("config.html", _get_config_data())
 
 
 @watchdog_app.get("/api/config", dependencies=[Depends(_require_view_access)])

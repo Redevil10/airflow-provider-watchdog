@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-06-01
+
+### Fixed
+
+- **Stored XSS on the Configuration page.** The per-DAG detector toggles built their `onchange` handler by interpolating the DAG id into an inline HTML attribute with only single-quote escaping, so a DAG whose id contained `"`, `<`, or `&` could break out of the attribute and inject markup that ran in the browser of anyone viewing the page (the toggle grid is written via `innerHTML`). The toggles now carry their action in `data-*` attributes read by a single delegated event listener — the DAG id is referenced by row index and is never interpolated into markup or a JS string. Other sinks on the page were already escaped; this was the one that was missed.
+- **`load_config()` now validates and coerces the `watchdog_config` Variable.** Only the Configuration-page save path validated input; a Variable edited out-of-band (Airflow CLI/UI/API) was merged in unchecked, so a wrong type or out-of-range value could reach the detector SQL/arithmetic or silently disable a detector (e.g. `exclude_dags: "foo"` became `['f','o']`, a string or `0` count disabled a detector). Numeric fields are now type- and range-checked (counts, ratios, and multipliers must be positive; the min-deviation floors must be non-negative), list/string fields are type-checked, and any invalid value falls back to its default with a logged warning rather than propagating. The save-path validator was tightened to match (rejects `0` for the must-be-positive params).
+- **A single malformed stored alert no longer blanks the whole dashboard.** Reading an alert's severity used bracket access; a stored result missing `severity` raised inside the assembly loop and sent the entire dashboard to its error state. It now uses `.get()`, consistent with the surrounding code.
+- **Hardened the JSON embedded in the dashboard/config pages** against `U+2028`/`U+2029` — valid in JSON but illegal raw in a JavaScript string literal, where they would be a syntax error that blanks the page. The two duplicated escaping blocks are consolidated into one helper.
+
+### Added
+
+- `docs/gen_preview.py` — renders the real dashboard and config templates with realistic sample data to standalone HTML, for taking the README screenshots without a running Airflow. Output is written to a gitignored `preview/` directory.
+
 ## [0.6.3] - 2026-05-31
 
 ### Fixed

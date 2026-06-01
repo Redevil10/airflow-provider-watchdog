@@ -458,6 +458,7 @@
         }
 
         let savedState = "";  // dirty-check baseline, set during init
+        let filteredDags = [];  // current search-filtered DAG list (render writes it)
 
         function numInputById(id) {
             const v = parseFloat(document.getElementById(id).value);
@@ -557,6 +558,20 @@
             updateDirty();
         }
 
+        // One delegated listener handles every toggle (see makeToggle): it reads
+        // the action from data-* attributes, so there are no inline handlers and
+        // no DAG id is ever interpolated into markup or a JS string.
+        function onToggleChange(e) {
+            const input = e.target;
+            if (!input.matches('input[type="checkbox"][data-scope]')) return;
+            const det = input.dataset.det;
+            if (input.dataset.scope === "global") {
+                toggleGlobal(det);
+            } else {
+                toggleDag(filteredDags[Number(input.dataset.dagIdx)], det);
+            }
+        }
+
         function updateDirty() {
             const dirty = JSON.stringify(getStatePayload()) !== savedState;
             document.getElementById("saveBtn").disabled = !dirty;
@@ -575,19 +590,33 @@
             return name.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
         }
 
-        function makeToggle(checked, onChange, disabled) {
-            const id = "t_" + Math.random().toString(36).slice(2);
+        function attrEsc(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/"/g, "&quot;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
+
+        // Build a toggle whose action is encoded in data-* attributes (an integer
+        // row index plus the trusted detector name) rather than an inline onchange
+        // handler. A delegated change listener reads them, so a DAG id never gets
+        // interpolated into an HTML attribute or a JS string.
+        function makeToggle(checked, disabled, dataset) {
             const dis = disabled ? "disabled" : "";
             const chk = checked ? "checked" : "";
+            const attrs = Object.entries(dataset)
+                .map(([k, v]) => `${k}="${attrEsc(String(v))}"`)
+                .join(" ");
             return `<label class="toggle">
-                <input type="checkbox" id="${id}" ${chk} ${dis} onchange="${onChange}">
+                <input type="checkbox" ${chk} ${dis} ${attrs}>
                 <span class="slider"></span>
             </label>`;
         }
 
         function render() {
             const searchTerm = (document.getElementById("dagSearch").value || "").toLowerCase();
-            const filteredDags = dags.filter(d => d.toLowerCase().includes(searchTerm));
+            filteredDags = dags.filter(d => d.toLowerCase().includes(searchTerm));
 
             // Header
             const head = document.getElementById("tableHead");
@@ -604,22 +633,24 @@
             rows += `<tr class="global-row"><td>Global (all DAGs)</td>`;
             for (const det of detectors) {
                 const on = isGlobalEnabled(det);
-                rows += `<td>${makeToggle(on, `toggleGlobal('${det}')`)}</td>`;
+                rows += `<td>${makeToggle(on, false, { "data-scope": "global", "data-det": det })}</td>`;
             }
             rows += "</tr>";
 
-            // Per-DAG rows
-            for (const dagId of filteredDags) {
+            // Per-DAG rows. The dag id is referenced by its index into
+            // filteredDags (an integer), never interpolated into the markup.
+            for (let ri = 0; ri < filteredDags.length; ri++) {
+                const dagId = filteredDags[ri];
                 rows += `<tr><td>${escapeHtml(dagId)}</td>`;
                 for (const det of detectors) {
                     const globalOff = globalDisabled.has(det);
                     const dagEnabled = isEnabled(dagId, det);
                     // If globally disabled, show disabled toggle
-                    rows += `<td>${makeToggle(
-                        dagEnabled,
-                        `toggleDag('${dagId.replace(/'/g, "\\'")}', '${det}')`,
-                        globalOff
-                    )}</td>`;
+                    rows += `<td>${makeToggle(dagEnabled, globalOff, {
+                        "data-scope": "dag",
+                        "data-dag-idx": ri,
+                        "data-det": det,
+                    })}</td>`;
                 }
                 rows += "</tr>";
             }
@@ -677,6 +708,9 @@
 
         // Search filter
         document.getElementById("dagSearch").addEventListener("input", render);
+
+        // Delegated toggle handler — attached once; survives table re-renders.
+        document.getElementById("tableBody").addEventListener("change", onToggleChange);
 
         // Initial render
         initParamFields();
