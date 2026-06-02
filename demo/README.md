@@ -42,7 +42,7 @@ across a mix of severities:
 |---|---|---|
 | `payment_reconciliation` | Failure spike (40% of recent runs failed) | critical |
 | `transaction_settlement` | Stuck task (running far past its historical max) | critical |
-| `nightly_warehouse_load` | Missed deadline (running run well over 2× median) | critical |
+| `nightly_warehouse_load` | Missed deadline (running well over 2× median) | critical |
 | `inventory_sync` | Schedule anomaly (started hours later than usual) | critical |
 | `daily_sales_etl` | Runtime anomaly (latest run slower than the IQR fence) | warning |
 | `order_ingestion`, `customer_segmentation`, `product_recommendations` | — | healthy |
