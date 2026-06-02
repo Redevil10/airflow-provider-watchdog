@@ -1,0 +1,77 @@
+# One-command demo of airflow-plugin-watchdog on a real Airflow 3 instance.
+#
+#   docker compose up      # then open http://localhost:8080/watchdog/
+#
+# Postgres holds the metadata DB; `airflow-init` migrates it and seeds realistic
+# history (see seed.py); `airflow-apiserver` runs Airflow 3 with the Watchdog
+# plugin installed from PyPI. The plugin's background scheduler runs the first
+# detection cycle ~15s after the API server starts, so the dashboard populates
+# on its own shortly after boot.
+#
+# This is a throwaway demo, not a production reference: it uses a single
+# API-server process, `_PIP_ADDITIONAL_REQUIREMENTS`, and SimpleAuthManager's
+# all-admins mode so there is no login wall.
+
+name: watchdog-demo
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:3.2.1
+  environment: &airflow-env
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    # Fixed key so the Variables written by airflow-init decrypt in the API server.
+    AIRFLOW__CORE__FERNET_KEY: FwzLX8LhMF4nma5HTnRdtEfH_NqVWnbxatghq9Q4-IM=
+    # Dev-only: every visitor is an admin, so the dashboard opens without a login.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+    AIRFLOW__API_AUTH__JWT_SECRET: watchdog-demo-secret-0123456789abcdef0123456789abcdef
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: migrate the metadata DB, then seed demo history.
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        python /opt/airflow/seed.py
+    volumes:
+      - ./seed.py:/opt/airflow/seed.py:ro
+    restart: "no"
+
+  # Airflow 3 API server with the Watchdog plugin installed from PyPI.
+  airflow-apiserver:
+    <<: *airflow-common
+    environment:
+      <<: *airflow-env
+      _PIP_ADDITIONAL_REQUIREMENTS: airflow-plugin-watchdog
+    command: api-server
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s

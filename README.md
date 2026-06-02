@@ -10,18 +10,38 @@ A lightweight, zero-dependency Airflow 3 plugin that monitors DAG and task healt
 
 No Prometheus. No Grafana. No Datadog. No DAG to deploy. Just `pip install` and go.
 
-## Screenshots
+![Watchdog dashboard demo](https://github.com/user-attachments/assets/7126f827-888a-436d-9d52-241cac3e08c7)
 
-DAG health at a glance — problems sorted to the top, with each task-level alert labelled by the offending task:
+*DAG health at a glance — problems sorted to the top, each task-level alert labelled by the offending task.*
 
-![Watchdog dashboard](docs/dashboard.png)
+## Why Watchdog?
+
+- **Built for Airflow 3.** Detection runs inside the Airflow 3 API server and reads the metadata DB the sanctioned way (AIP-72) — nothing runs in a worker task.
+- **Statistical detection, not hand-tuned thresholds.** Runtime and schedule anomalies use IQR-based outlier detection that learns each task's *own* baseline — so you don't set a number per DAG, and a single outlier doesn't skew the reference.
+- **Nothing extra to run.** No sidecar service, metrics exporter, or dedicated DAG; one `pip install` and one API-server restart.
+- **Alerts out of the box.** Email plus Slack, MS Teams, and Discord webhooks — all standard-library, all configured from the UI.
+
+## The configuration page
 
 The **Configuration** page edits the entire `watchdog_config` from the UI — no hand-editing the Airflow Variable — across three tabs:
 
 | Detectors | Thresholds | Alerts |
 |:---:|:---:|:---:|
-| ![Detectors tab](docs/config_detectors.png) | ![Thresholds tab](docs/config_thresholds.png) | ![Alerts tab](docs/config_alerts.png) |
+| ![Detectors tab](https://github.com/user-attachments/assets/298fe20b-fe24-47bc-ad84-439a4798e480) | ![Thresholds tab](https://github.com/user-attachments/assets/dba5f578-de17-44a1-8b6e-8c5d8a952814) | ![Alerts tab](https://github.com/user-attachments/assets/e53dbdb1-a889-4a1a-8599-1bbaad786302) |
 | Enable/disable per DAG + excluded DAGs | Numeric detection tuning | Email &amp; webhook destinations |
+
+## Try it locally
+
+Want to see it populated without wiring up your own Airflow? The [`demo/`](demo/)
+directory brings up Airflow 3 with Watchdog and realistic seeded history in one
+command:
+
+```bash
+cd demo && docker compose up
+```
+
+Then open **<http://localhost:8080/watchdog/>** — the dashboard comes up populated,
+with every detector firing and no login required. See [`demo/README.md`](demo/README.md).
 
 ## What it detects
 
@@ -69,6 +89,31 @@ process, which is started automatically by the plugin.
 
 After installing, **restart the API server** so the plugin and its scheduler are
 picked up. By default detection runs every 30 minutes (configurable — see below).
+
+### Managed Airflow (MWAA · Cloud Composer · Astronomer)
+
+There is nothing special to deploy — Watchdog is an ordinary PyPI package, so on a
+managed Airflow 3 platform you install it the same way you add any other
+dependency, then let the platform restart the environment. No DAG, no extra
+service.
+
+- **Amazon MWAA** — add `airflow-plugin-watchdog` to the `requirements.txt` in
+  your environment's S3 bucket and point the environment at the new version. MWAA
+  restarts the schedulers/web server, which loads the plugin. (Requires an
+  Airflow 3.x environment.)
+- **Google Cloud Composer** — install it as a PyPI package:
+  ```bash
+  gcloud composer environments update ENV_NAME \
+      --location LOCATION \
+      --update-pypi-package airflow-plugin-watchdog
+  ```
+  …or add it under **PyPI packages** in the Composer console. Composer rolls the
+  environment to pick it up.
+- **Astronomer / Astro** — add `airflow-plugin-watchdog` to your project's
+  `requirements.txt` and run `astro deploy` (or `astro dev restart` locally).
+
+On every platform the dashboard then appears at `/watchdog/` (**Browse → Watchdog**
+in the navbar) once the API server has restarted.
 
 ## Configuration
 
